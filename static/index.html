@@ -41,6 +41,10 @@
               <p class="eyebrow">Workbench</p>
               <h1>工作台</h1>
             </div>
+            <label class="field inline-field">
+              <span>当前后端</span>
+              <select id="activeEndpointSelect"></select>
+            </label>
           </div>
 
           <div class="grid two">
@@ -212,13 +216,14 @@
             </div>
           </div>
           <section class="panel settings-panel">
+            <div class="panel-head">
+              <h2>后端接口</h2>
+              <button id="addEndpointBtn" class="ghost" type="button">添加后端</button>
+            </div>
+            <div id="endpointList" class="endpoint-list"></div>
             <label class="field">
-              <span>后端接口基地址（含 /v1）</span>
-              <input id="baseUrlInput" placeholder="https://api.openai.com/v1" />
-            </label>
-            <label class="field">
-              <span>模型名</span>
-              <input id="modelInput" placeholder="gpt-image-1" />
+              <span>当前活跃后端</span>
+              <select id="settingsActiveEndpointSelect"></select>
             </label>
             <label class="field">
               <span>预期生成时间（秒，用于任务进度条）</span>
@@ -233,13 +238,6 @@
               <input id="defaultRetriesInput" type="number" min="0" max="9" value="0" />
             </label>
             <label class="field">
-              <span>返回格式</span>
-              <select id="settingsResponseFormatSelect">
-                <option value="b64_json">b64_json（推荐）</option>
-                <option value="url">url</option>
-              </select>
-            </label>
-            <label class="field">
               <span>文生图默认分辨率</span>
               <select id="defaultTextSizeSelect">
                 <option value="1024x1024">1024 × 1024</option>
@@ -251,14 +249,6 @@
                 <option value="256x256">256 × 256</option>
                 <option value="auto">auto</option>
               </select>
-            </label>
-            <label class="field">
-              <span>API Key</span>
-              <input id="apiKeyInput" type="password" placeholder="留空则保持不变" />
-            </label>
-            <label class="check-row">
-              <input id="clearApiKey" type="checkbox" />
-              <span>清除已保存的 API Key</span>
             </label>
             <label class="field">
               <span>新 WebUI 密码</span>

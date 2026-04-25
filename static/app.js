@@ -20,11 +20,12 @@ const state = {
   galleryColumns: 3,
   confirmResolve: null,
   textModeSize: "1024x1024",
-  responseFormat: "b64_json",
   defaultRetries: 0,
   lightboxItem: null,
   lightboxUrl: "",
   lightboxTitle: "",
+  endpoints: [],
+  activeEndpointId: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -94,12 +95,96 @@ function collectImageOptions() {
   const entries = {
     quality: $("#qualitySelect").value,
     style: $("#styleSelect").value,
-    response_format: state.responseFormat,
   };
   Object.entries(entries).forEach(([key, value]) => {
     if (value !== "") options[key] = value;
   });
   return options;
+}
+
+function makeEndpointDraft(endpoint = {}) {
+  return {
+    id: endpoint.id || `endpoint-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    alias: endpoint.alias || "",
+    base_url: endpoint.base_url || "https://api.openai.com/v1",
+    model: endpoint.model || "gpt-image-1",
+    api_key: "",
+    has_api_key: Boolean(endpoint.has_api_key || endpoint.api_key),
+    clear_api_key: false,
+  };
+}
+
+function renderEndpointList() {
+  const container = $("#endpointList");
+  container.innerHTML = state.endpoints
+    .map(
+      (endpoint, index) => `
+        <section class="endpoint-card" data-endpoint-id="${endpoint.id}">
+          <div class="panel-head">
+            <h3>后端 ${index + 1}</h3>
+            <button class="ghost danger" type="button" data-action="remove-endpoint">删除</button>
+          </div>
+          <label class="field">
+            <span>别名</span>
+            <input class="endpoint-alias" value="${escapeHtml(endpoint.alias)}" placeholder="例如 主线路 / NewAPI / 备用节点" />
+          </label>
+          <label class="field">
+            <span>接口基地址（含 /v1）</span>
+            <input class="endpoint-base-url" value="${escapeHtml(endpoint.base_url)}" placeholder="https://your-api.example.com/v1" />
+          </label>
+          <label class="field">
+            <span>模型名</span>
+            <input class="endpoint-model" value="${escapeHtml(endpoint.model)}" placeholder="gpt-image-1 / gpt-image-2" />
+          </label>
+          <label class="field">
+            <span>API Key</span>
+            <input class="endpoint-api-key" type="password" placeholder="${endpoint.has_api_key ? "已保存，留空则保持不变" : "输入 API Key"}" />
+          </label>
+          <label class="check-row">
+            <input class="endpoint-clear-api-key" type="checkbox" ${endpoint.clear_api_key ? "checked" : ""} />
+            <span>清除该后端已保存的 API Key</span>
+          </label>
+        </section>
+      `,
+    )
+    .join("");
+  renderEndpointSelectors();
+}
+
+function renderEndpointSelectors() {
+  const options = state.endpoints
+    .map((endpoint) => `<option value="${endpoint.id}">${escapeHtml(endpoint.alias || endpoint.model || endpoint.id)}</option>`)
+    .join("");
+  $("#activeEndpointSelect").innerHTML = options;
+  $("#settingsActiveEndpointSelect").innerHTML = options;
+  if (state.activeEndpointId) {
+    $("#activeEndpointSelect").value = state.activeEndpointId;
+    $("#settingsActiveEndpointSelect").value = state.activeEndpointId;
+  }
+}
+
+function collectEndpointsFromForm() {
+  return $$("#endpointList .endpoint-card").map((card, index) => {
+    const existing = state.endpoints.find((endpoint) => endpoint.id === card.dataset.endpointId) || makeEndpointDraft();
+    return {
+      id: existing.id || `endpoint-${index + 1}`,
+      alias: card.querySelector(".endpoint-alias").value.trim() || `后端 ${index + 1}`,
+      base_url: card.querySelector(".endpoint-base-url").value.trim(),
+      model: card.querySelector(".endpoint-model").value.trim(),
+      api_key: card.querySelector(".endpoint-api-key").value.trim(),
+      clear_api_key: card.querySelector(".endpoint-clear-api-key").checked,
+    };
+  });
+}
+
+async function setActiveEndpoint(endpointId, persist = true) {
+  state.activeEndpointId = endpointId;
+  renderEndpointSelectors();
+  if (!persist) return;
+  await api("/api/settings", {
+    method: "POST",
+    body: { active_endpoint_id: endpointId },
+  });
 }
 
 function fillWorkbench(prompt, size = "1024x1024") {
@@ -383,7 +468,7 @@ async function generate() {
     if (state.mode === "text") {
       data = await api("/api/generate", {
         method: "POST",
-        body: { prompt, retries, ...collectSize(), ...collectImageOptions() },
+        body: { prompt, retries, endpoint_id: state.activeEndpointId, ...collectSize(), ...collectImageOptions() },
       });
     } else {
       const files = Array.from($("#editImage").files);
@@ -391,6 +476,7 @@ async function generate() {
       const form = new FormData();
       form.append("prompt", prompt);
       form.append("retries", retries);
+      form.append("endpoint_id", state.activeEndpointId);
       Object.entries(collectSize()).forEach(([key, value]) => form.append(key, value));
       Object.entries(collectImageOptions()).forEach(([key, value]) => form.append(key, value));
       files.forEach((file) => form.append(files.length > 1 ? "image[]" : "image", file));
@@ -508,7 +594,7 @@ function renderTaskCard(task) {
       <div class="task-main">
         <div>
           <strong>${statusText}</strong>
-          <span class="muted">#${task.id.slice(0, 8)} · ${task.mode === "image" ? "图生图" : "文生图"} · ${escapeHtml(task.size)}</span>
+          <span class="muted">#${task.id.slice(0, 8)} · ${task.mode === "image" ? "图生图" : "文生图"} · ${escapeHtml(task.size)} · ${escapeHtml(task.endpoint_alias || "默认后端")}</span>
         </div>
         <span class="task-badge">${task.attempt}/${task.max_attempts}</span>
       </div>
@@ -798,21 +884,19 @@ async function savePromptEdit(event) {
 
 async function loadSettings() {
   const settings = await api("/api/settings");
-  $("#baseUrlInput").value = settings.base_url || "";
-  $("#modelInput").value = settings.model || "";
+  state.endpoints = (settings.endpoints || []).map(makeEndpointDraft);
+  state.activeEndpointId = settings.active_endpoint_id || state.endpoints[0]?.id || "";
+  renderEndpointList();
   $("#expectedTaskSecondsInput").value = settings.expected_task_seconds || 90;
   $("#serverPortInput").value = settings.server_port || 7860;
   $("#defaultRetriesInput").value = settings.default_retries || 0;
-  $("#settingsResponseFormatSelect").value = settings.response_format || "b64_json";
   $("#defaultTextSizeSelect").value = settings.default_text_size || "1024x1024";
   state.defaultRetries = settings.default_retries || 0;
-  state.responseFormat = settings.response_format || "b64_json";
   state.textModeSize = settings.default_text_size || "1024x1024";
   if (state.mode === "text") {
     $("#sizeSelect").value = state.textModeSize;
     updateCustomSize();
   }
-  $("#apiKeyInput").placeholder = settings.has_api_key ? "已保存，留空则保持不变" : "输入 API Key";
   $("#passwordInput").placeholder = settings.password_set ? "已设置，留空则保持不变" : "设置 WebUI 密码";
 }
 
@@ -822,22 +906,17 @@ async function saveSettings() {
     await api("/api/settings", {
       method: "POST",
       body: {
-        base_url: $("#baseUrlInput").value,
-        model: $("#modelInput").value,
+        endpoints: collectEndpointsFromForm(),
+        active_endpoint_id: $("#settingsActiveEndpointSelect").value,
         expected_task_seconds: $("#expectedTaskSecondsInput").value,
         server_port: $("#serverPortInput").value,
         default_retries: $("#defaultRetriesInput").value,
-        response_format: $("#settingsResponseFormatSelect").value,
         default_text_size: $("#defaultTextSizeSelect").value,
-        api_key: $("#apiKeyInput").value,
-        clear_api_key: $("#clearApiKey").checked,
         password: $("#passwordInput").value,
         clear_password: $("#clearPassword").checked,
       },
     });
-    $("#apiKeyInput").value = "";
     $("#passwordInput").value = "";
-    $("#clearApiKey").checked = false;
     $("#clearPassword").checked = false;
     setHint("#settingsHint", "设置已保存。");
     await initAuth();
@@ -889,6 +968,7 @@ document.addEventListener("click", async (event) => {
   if (!target) return;
   const action = target.dataset.action;
   const card = target.closest("[data-id]");
+  const endpointCard = target.closest("[data-endpoint-id]");
   try {
     if (target.dataset.page) switchPage(target.dataset.page);
     if (target.classList.contains("mode-btn")) setMode(target.dataset.mode);
@@ -915,6 +995,14 @@ document.addEventListener("click", async (event) => {
     if (action === "prompt-copy") await copyText(decodeURIComponent(target.dataset.prompt));
     if (action === "prompt-edit") openPromptEdit(card);
     if (action === "prompt-delete") await deletePrompt(card);
+    if (action === "remove-endpoint" && endpointCard) {
+      if (state.endpoints.length <= 1) throw new Error("至少保留一个后端接口");
+      state.endpoints = state.endpoints.filter((item) => item.id !== endpointCard.dataset.endpointId);
+      if (!state.endpoints.find((item) => item.id === state.activeEndpointId)) {
+        state.activeEndpointId = state.endpoints[0]?.id || "";
+      }
+      renderEndpointList();
+    }
   } catch (error) {
     toast(error.message);
   }
@@ -924,6 +1012,17 @@ $("#loginForm").addEventListener("submit", login);
 $("#mobileMenuBtn").addEventListener("click", openMobileNav);
 $("#mobileNavBackdrop").addEventListener("click", closeMobileNav);
 $("#generateBtn").addEventListener("click", generate);
+$("#addEndpointBtn").addEventListener("click", () => {
+  state.endpoints.push(makeEndpointDraft({ alias: `后端 ${state.endpoints.length + 1}` }));
+  renderEndpointList();
+});
+$("#activeEndpointSelect").addEventListener("change", (event) => {
+  setActiveEndpoint(event.target.value).catch((error) => toast(error.message));
+});
+$("#settingsActiveEndpointSelect").addEventListener("change", (event) => {
+  state.activeEndpointId = event.target.value;
+  renderEndpointSelectors();
+});
 $("#sizeSelect").addEventListener("change", updateCustomSize);
 $("#galleryReload").addEventListener("click", loadGallery);
 $("#taskReload").addEventListener("click", loadTasks);

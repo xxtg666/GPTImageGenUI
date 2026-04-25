@@ -244,6 +244,11 @@ code {
   margin-bottom: 16px;
 }
 
+.inline-field {
+  min-width: 240px;
+  margin-bottom: 0;
+}
+
 .field span,
 .check-row span {
   color: var(--muted);
@@ -642,6 +647,19 @@ select:focus {
 
 .settings-panel {
   max-width: 760px;
+}
+
+.endpoint-list {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.endpoint-card {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .check-row {

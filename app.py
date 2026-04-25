@@ -28,15 +28,13 @@ CONFIG_PATH = DATA_DIR / "config.json"
 DB_PATH = DATA_DIR / "db.json"
 
 DEFAULT_CONFIG = {
-    "base_url": "https://api.openai.com/v1",
-    "model": "gpt-image-1",
-    "api_key": "",
+    "endpoints": [],
+    "active_endpoint_id": "default",
     "password_hash": "",
     "password_salt": "",
     "session_secret": "",
     "expected_task_seconds": 90,
     "default_retries": 0,
-    "response_format": "b64_json",
     "default_text_size": "1024x1024",
     "server_port": 7860,
 }
@@ -48,6 +46,16 @@ TASKS: dict[str, dict[str, Any]] = {}
 TASK_LOCK = threading.Lock()
 DB_LOCK = threading.Lock()
 MAX_TASK_HISTORY = 100
+
+
+def default_endpoint() -> dict[str, Any]:
+    return {
+        "id": "default",
+        "alias": "默认后端",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-image-1",
+        "api_key": "",
+    }
 
 
 class UpstreamError(RuntimeError):
@@ -62,10 +70,10 @@ def ensure_files() -> None:
     DATA_DIR.mkdir(exist_ok=True)
     IMAGES_DIR.mkdir(exist_ok=True)
     if not CONFIG_PATH.exists():
-        config = DEFAULT_CONFIG | {"session_secret": secrets.token_hex(32)}
+        config = normalize_config(DEFAULT_CONFIG | {"session_secret": secrets.token_hex(32)})
         write_json(CONFIG_PATH, config)
     else:
-        config = DEFAULT_CONFIG | read_json(CONFIG_PATH, DEFAULT_CONFIG)
+        config = normalize_config(DEFAULT_CONFIG | read_json(CONFIG_PATH, DEFAULT_CONFIG))
         if not config.get("session_secret"):
             config["session_secret"] = secrets.token_hex(32)
         write_json(CONFIG_PATH, config)
@@ -84,12 +92,95 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), "utf-8")
 
 
+def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
+    config = DEFAULT_CONFIG | dict(config)
+    endpoints = config.get("endpoints") or []
+    if not endpoints:
+        endpoints = [
+            {
+                "id": "default",
+                "alias": config.get("alias", "") or "默认后端",
+                "base_url": config.get("base_url", default_endpoint()["base_url"]),
+                "model": config.get("model", default_endpoint()["model"]),
+                "api_key": config.get("api_key", ""),
+            }
+        ]
+    normalized_endpoints = normalize_endpoints(endpoints)
+    config["endpoints"] = normalized_endpoints
+    endpoint_ids = {item["id"] for item in normalized_endpoints}
+    active_id = str(config.get("active_endpoint_id", "") or normalized_endpoints[0]["id"])
+    config["active_endpoint_id"] = active_id if active_id in endpoint_ids else normalized_endpoints[0]["id"]
+    return config
+
+
+def normalize_endpoints(items: list[Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            continue
+        endpoint_id = normalize_endpoint_id(item.get("id"), f"endpoint-{index}")
+        if endpoint_id in seen_ids:
+            endpoint_id = normalize_endpoint_id(f"{endpoint_id}-{index}", f"endpoint-{index}")
+        seen_ids.add(endpoint_id)
+        result.append(
+            {
+                "id": endpoint_id,
+                "alias": str(item.get("alias", "")).strip() or f"后端 {index}",
+                "base_url": str(item.get("base_url", "")).strip().rstrip("/") or default_endpoint()["base_url"],
+                "model": str(item.get("model", "")).strip() or default_endpoint()["model"],
+                "api_key": str(item.get("api_key", "") or "").strip(),
+            }
+        )
+    return result or [default_endpoint()]
+
+
+def normalize_endpoint_id(value: Any, fallback: str) -> str:
+    raw = str(value or "").strip().lower()
+    normalized = re.sub(r"[^a-z0-9_-]+", "-", raw).strip("-")
+    return normalized[:40] or fallback
+
+
+def get_active_endpoint(config: dict[str, Any], endpoint_id: str | None = None) -> dict[str, Any]:
+    endpoints = config.get("endpoints", [])
+    target_id = endpoint_id or config.get("active_endpoint_id")
+    for item in endpoints:
+        if item.get("id") == target_id:
+            return item
+    return endpoints[0] if endpoints else default_endpoint()
+
+
+def merge_endpoints(existing: list[dict[str, Any]], incoming: list[Any]) -> list[dict[str, Any]]:
+    existing_map = {item["id"]: item for item in normalize_endpoints(existing)}
+    merged: list[dict[str, Any]] = []
+    for index, raw in enumerate(incoming or [], start=1):
+        if not isinstance(raw, dict):
+            continue
+        endpoint_id = normalize_endpoint_id(raw.get("id"), f"endpoint-{index}")
+        previous = existing_map.get(endpoint_id, {})
+        api_key = str(raw.get("api_key", "") or "").strip()
+        if raw.get("clear_api_key"):
+            api_key = ""
+        elif not api_key:
+            api_key = previous.get("api_key", "")
+        merged.append(
+            {
+                "id": endpoint_id,
+                "alias": str(raw.get("alias", "")).strip() or previous.get("alias", f"后端 {index}"),
+                "base_url": str(raw.get("base_url", "")).strip().rstrip("/") or previous.get("base_url", default_endpoint()["base_url"]),
+                "model": str(raw.get("model", "")).strip() or previous.get("model", default_endpoint()["model"]),
+                "api_key": api_key,
+            }
+        )
+    return normalize_endpoints(merged)
+
+
 def get_config() -> dict[str, Any]:
-    return DEFAULT_CONFIG | read_json(CONFIG_PATH, DEFAULT_CONFIG)
+    return normalize_config(DEFAULT_CONFIG | read_json(CONFIG_PATH, DEFAULT_CONFIG))
 
 
 def save_config(config: dict[str, Any]) -> None:
-    write_json(CONFIG_PATH, DEFAULT_CONFIG | config)
+    write_json(CONFIG_PATH, normalize_config(DEFAULT_CONFIG | config))
 
 
 def get_db() -> dict[str, Any]:
@@ -382,7 +473,8 @@ def update_task(task_id: str, **changes: Any) -> None:
 
 def create_task(mode: str, prompt: str, size: str, retry_count: int, request_data: dict[str, Any]) -> dict[str, Any]:
     config = get_config()
-    request_data = request_data | {"config": config}
+    endpoint = get_active_endpoint(config, request_data.get("endpoint_id"))
+    request_data = request_data | {"config": config, "endpoint": endpoint}
     task_id = uuid.uuid4().hex
     expected_seconds = normalize_expected_seconds(config.get("expected_task_seconds", 90))
     retry_count = normalize_retry_count(retry_count)
@@ -392,7 +484,9 @@ def create_task(mode: str, prompt: str, size: str, retry_count: int, request_dat
         "status": "queued",
         "prompt": prompt,
         "size": size,
-        "model": config["model"],
+        "model": endpoint["model"],
+        "endpoint_id": endpoint["id"],
+        "endpoint_alias": endpoint["alias"],
         "attempt": 0,
         "max_attempts": max(1, min(10, retry_count + 1)),
         "created_at": int(time.time()),
@@ -437,13 +531,14 @@ def run_task(task_id: str) -> None:
         update_task(task_id, status="running", attempt=attempt, error="", raw_error=None)
         try:
             config = request_data["config"]
+            endpoint = request_data["endpoint"]
             options = request_data.get("options", {})
             if mode == "text":
-                payload = {"model": config["model"], "prompt": prompt, "size": size} | options
-                response = request_upstream(config, "/images/generations", json_bytes(payload), "application/json")
+                payload = {"model": endpoint["model"], "prompt": prompt, "size": size} | options
+                response = request_upstream(endpoint, "/images/generations", json_bytes(payload), "application/json")
                 source_image = None
             else:
-                fields = {"model": config["model"], "prompt": prompt, "size": size}
+                fields = {"model": endpoint["model"], "prompt": prompt, "size": size}
                 fields.update({key: str(value) for key, value in options.items()})
                 files = request_data["images"].copy()
                 source_image = save_source_image(request_data["images"][0] if request_data.get("images") else None)
@@ -453,9 +548,16 @@ def run_task(task_id: str) -> None:
                     fields,
                     files,
                 )
-                response = request_upstream(config, "/images/edits", multipart_body, content_type)
-            saved = save_generated_images(response, prompt, size, mode, config["model"], source_image)
-            update_task(task_id, status="succeeded", images=saved, model=config["model"], completed_at=int(time.time()))
+                response = request_upstream(endpoint, "/images/edits", multipart_body, content_type)
+            saved = save_generated_images(response, prompt, size, mode, endpoint["model"], source_image)
+            update_task(
+                task_id,
+                status="succeeded",
+                images=saved,
+                model=endpoint["model"],
+                endpoint_alias=endpoint["alias"],
+                completed_at=int(time.time()),
+            )
             return
         except UpstreamError as exc:
             raw_error = {
@@ -499,11 +601,6 @@ def normalize_expected_seconds(value: Any) -> int:
         return 90
 
 
-def normalize_response_format(value: Any) -> str:
-    value = str(first_value(value) or "b64_json").strip()
-    return value if value in {"b64_json", "url"} else "b64_json"
-
-
 def normalize_default_size(value: Any) -> str:
     value = str(first_value(value) or "1024x1024").strip()
     if value in {"1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792", "512x512", "256x256", "auto"}:
@@ -522,11 +619,10 @@ def normalize_port(value: Any) -> int:
 
 def collect_image_options(values: dict[str, Any]) -> dict[str, Any]:
     options: dict[str, Any] = {"n": 1}
-    for key in ("quality", "response_format", "style"):
+    for key in ("quality", "style"):
         value = first_value(values.get(key))
         if value:
             options[key] = value
-    options["response_format"] = normalize_response_format(options.get("response_format", "b64_json"))
     return options
 
 
@@ -760,11 +856,19 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         self.send_json(
             200,
             {
-                "base_url": config.get("base_url", ""),
-                "model": config.get("model", ""),
+                "endpoints": [
+                    {
+                        "id": item["id"],
+                        "alias": item["alias"],
+                        "base_url": item["base_url"],
+                        "model": item["model"],
+                        "has_api_key": bool(item.get("api_key")),
+                    }
+                    for item in config.get("endpoints", [])
+                ],
+                "active_endpoint_id": config.get("active_endpoint_id", ""),
                 "expected_task_seconds": normalize_expected_seconds(config.get("expected_task_seconds", 90)),
                 "default_retries": normalize_retry_count(config.get("default_retries", 0)),
-                "response_format": normalize_response_format(config.get("response_format", "b64_json")),
                 "default_text_size": str(config.get("default_text_size", "1024x1024") or "1024x1024"),
                 "server_port": normalize_port(config.get("server_port", 7860)),
                 "has_api_key": bool(config.get("api_key")),
@@ -777,24 +881,18 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             return
         body = parse_json_body(self)
         config = get_config()
-        if "base_url" in body:
-            config["base_url"] = str(body["base_url"]).strip().rstrip("/")
-        if "model" in body:
-            config["model"] = str(body["model"]).strip()
+        if "endpoints" in body:
+            config["endpoints"] = merge_endpoints(config.get("endpoints", []), body.get("endpoints", []))
+        if "active_endpoint_id" in body:
+            config["active_endpoint_id"] = normalize_endpoint_id(body.get("active_endpoint_id"), config.get("active_endpoint_id", "default"))
         if "expected_task_seconds" in body:
             config["expected_task_seconds"] = normalize_expected_seconds(body.get("expected_task_seconds"))
         if "default_retries" in body:
             config["default_retries"] = normalize_retry_count(body.get("default_retries"))
-        if "response_format" in body:
-            config["response_format"] = normalize_response_format(body.get("response_format"))
         if "default_text_size" in body:
             config["default_text_size"] = normalize_default_size(body.get("default_text_size"))
         if "server_port" in body:
             config["server_port"] = normalize_port(body.get("server_port"))
-        if body.get("api_key"):
-            config["api_key"] = str(body["api_key"]).strip()
-        if body.get("clear_api_key"):
-            config["api_key"] = ""
         if body.get("password"):
             salt, digest = hash_password(str(body["password"]))
             config["password_salt"] = salt
@@ -817,7 +915,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         if not prompt:
             self.send_error_json(400, "提示词不能为空")
             return
-        task = create_task("text", prompt, size, retry_count, {"options": options})
+        task = create_task("text", prompt, size, retry_count, {"options": options, "endpoint_id": body.get("endpoint_id")})
         self.send_json(202, {"task": task})
 
     def handle_edit(self) -> None:
@@ -842,7 +940,13 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         if not images:
             self.send_error_json(400, "必须上传图片")
             return
-        task = create_task("image", prompt, size, retry_count, {"images": images, "mask": mask, "options": options})
+        task = create_task(
+            "image",
+            prompt,
+            size,
+            retry_count,
+            {"images": images, "mask": mask, "options": options, "endpoint_id": fields.get("endpoint_id")},
+        )
         self.send_json(202, {"task": task})
 
     def handle_list_tasks(self) -> None:
