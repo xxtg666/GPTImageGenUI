@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GPT 绘图工作台</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <button id="mobileMenuBtn" class="mobile-menu-btn" type="button" aria-label="打开导航">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+    <div id="mobileNavBackdrop" class="mobile-nav-backdrop hidden"></div>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">G</span>
+          <div>
+            <strong>GPT 绘图工作台</strong>
+            <small>Generations · Edits · Gallery</small>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-page="workbench">工作台</button>
+          <button class="nav-item" data-page="tasks">任务</button>
+          <button class="nav-item" data-page="gallery">画廊</button>
+          <button class="nav-item" data-page="prompts">提示词</button>
+          <button class="nav-item" data-page="settings">设置</button>
+        </nav>
+        <div class="status-card">
+          <span class="dot"></span>
+          <span id="statusText">检查登录状态</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section id="page-workbench" class="page active">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">Workbench</p>
+              <h1>工作台</h1>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>生成设置</h2>
+                <div class="segmented">
+                  <button class="mode-btn active" data-mode="text">文生图</button>
+                  <button class="mode-btn" data-mode="image">图生图</button>
+                </div>
+              </div>
+
+              <label class="field">
+                <span>提示词</span>
+                <textarea id="promptInput" rows="9" placeholder="描述画面、风格、构图、光线、材质和需要避免的歧义。"></textarea>
+              </label>
+
+              <div id="imageEditFields" class="hidden">
+                <div class="edit-uploader">
+                  <div class="upload-card">
+                    <label class="field">
+                      <span>参考图片</span>
+                      <input id="editImage" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+                    </label>
+                    <div id="editPreviewBox" class="edit-preview-box empty">
+                      <p>选择图片后可直接涂抹蒙版。多图上传时会用第一张图绘制蒙版。</p>
+                    </div>
+                  </div>
+                  <div class="upload-card mask-card">
+                    <strong>蒙版 Mask</strong>
+                    <p class="muted">用画笔涂抹需要修改的区域，系统会生成透明区域蒙版并随任务提交。</p>
+                    <div class="mask-actions">
+                      <button id="openMaskPainterBtn" class="ghost" type="button">涂抹蒙版</button>
+                      <button id="clearPaintedMaskBtn" class="ghost" type="button">清除涂抹</button>
+                    </div>
+                    <label class="field">
+                      <span>或上传已有 Mask</span>
+                      <input id="maskImage" type="file" accept="image/png,image/jpeg,image/webp" />
+                    </label>
+                    <p id="maskStatus" class="hint">未设置蒙版。</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid compact">
+                <label class="field">
+                  <span>分辨率</span>
+                  <select id="sizeSelect">
+                    <option value="1024x1024">1024 × 1024</option>
+                    <option value="1536x1024">1536 × 1024</option>
+                    <option value="1024x1536">1024 × 1536</option>
+                    <option value="1792x1024">1792 × 1024</option>
+                    <option value="1024x1792">1024 × 1792</option>
+                    <option value="512x512">512 × 512</option>
+                    <option value="256x256">256 × 256</option>
+                    <option value="auto">auto</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </label>
+                <label class="field custom-size hidden">
+                  <span>宽度</span>
+                  <input id="widthInput" type="number" min="1" value="1024" />
+                </label>
+                <label class="field custom-size hidden">
+                  <span>高度</span>
+                  <input id="heightInput" type="number" min="1" value="1024" />
+                </label>
+              </div>
+              <details class="advanced">
+                <summary>高级参数</summary>
+                <div class="grid compact">
+                  <label class="field">
+                    <span>质量 quality</span>
+                    <select id="qualitySelect">
+                      <option value="">默认</option>
+                      <option value="auto">auto</option>
+                      <option value="standard">standard</option>
+                      <option value="hd">hd</option>
+                      <option value="low">low</option>
+                      <option value="medium">medium</option>
+                      <option value="high">high</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>风格 style</span>
+                    <select id="styleSelect">
+                      <option value="">默认</option>
+                      <option value="vivid">vivid</option>
+                      <option value="natural">natural</option>
+                    </select>
+                  </label>
+                </div>
+              </details>
+
+              <button id="generateBtn" class="primary">提交生成任务</button>
+              <p id="workbenchHint" class="hint"></p>
+            </section>
+
+            <section class="panel result-panel">
+              <div class="panel-head">
+                <h2>本次结果</h2>
+                <button class="ghost" data-page="gallery">打开画廊</button>
+              </div>
+              <div id="resultViewer" class="result-viewer empty">
+                <p>生成后的图片会显示在这里，并自动保存到本地画廊。</p>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel task-panel">
+            <div class="panel-head">
+              <h2>任务列表</h2>
+              <button class="ghost" data-page="tasks">查看全部任务</button>
+            </div>
+            <div id="workbenchTaskList" class="task-list"></div>
+          </section>
+        </section>
+
+        <section id="page-tasks" class="page">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">Jobs</p>
+              <h1>任务列表</h1>
+            </div>
+            <button id="taskReload" class="ghost">刷新</button>
+          </div>
+          <section class="panel">
+            <div id="taskList" class="task-list"></div>
+          </section>
+        </section>
+
+        <section id="page-gallery" class="page">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">Archive</p>
+              <h1>画廊</h1>
+            </div>
+            <div class="toolbar">
+              <input id="gallerySearch" type="search" placeholder="搜索提示词、模型、标签、分辨率" />
+              <input id="galleryTag" type="search" placeholder="按标签过滤" />
+              <button id="galleryReload" class="ghost">刷新</button>
+            </div>
+          </div>
+          <div id="galleryGrid" class="gallery-grid"></div>
+        </section>
+
+        <section id="page-prompts" class="page">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">Prompt Library</p>
+              <h1>提示词收集</h1>
+            </div>
+            <button id="openPromptDialog" class="primary narrow">添加提示词</button>
+          </div>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>收藏列表</h2>
+              <input id="promptSearch" type="search" placeholder="搜索提示词" />
+            </div>
+            <div id="promptList" class="prompt-list"></div>
+          </section>
+        </section>
+
+        <section id="page-settings" class="page">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">Runtime</p>
+              <h1>设置</h1>
+            </div>
+          </div>
+          <section class="panel settings-panel">
+            <label class="field">
+              <span>后端接口基地址（含 /v1）</span>
+              <input id="baseUrlInput" placeholder="https://api.openai.com/v1" />
+            </label>
+            <label class="field">
+              <span>模型名</span>
+              <input id="modelInput" placeholder="gpt-image-1" />
+            </label>
+            <label class="field">
+              <span>预期生成时间（秒，用于任务进度条）</span>
+              <input id="expectedTaskSecondsInput" type="number" min="5" max="3600" value="90" />
+            </label>
+            <label class="field">
+              <span>服务端口（下次启动生效）</span>
+              <input id="serverPortInput" type="number" min="1" max="65535" value="7860" />
+            </label>
+            <label class="field">
+              <span>失败自动重试次数</span>
+              <input id="defaultRetriesInput" type="number" min="0" max="9" value="0" />
+            </label>
+            <label class="field">
+              <span>返回格式</span>
+              <select id="settingsResponseFormatSelect">
+                <option value="b64_json">b64_json（推荐）</option>
+                <option value="url">url</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>文生图默认分辨率</span>
+              <select id="defaultTextSizeSelect">
+                <option value="1024x1024">1024 × 1024</option>
+                <option value="1536x1024">1536 × 1024</option>
+                <option value="1024x1536">1024 × 1536</option>
+                <option value="1792x1024">1792 × 1024</option>
+                <option value="1024x1792">1024 × 1792</option>
+                <option value="512x512">512 × 512</option>
+                <option value="256x256">256 × 256</option>
+                <option value="auto">auto</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>API Key</span>
+              <input id="apiKeyInput" type="password" placeholder="留空则保持不变" />
+            </label>
+            <label class="check-row">
+              <input id="clearApiKey" type="checkbox" />
+              <span>清除已保存的 API Key</span>
+            </label>
+            <label class="field">
+              <span>新 WebUI 密码</span>
+              <input id="passwordInput" type="password" placeholder="留空则保持不变" />
+            </label>
+            <label class="check-row">
+              <input id="clearPassword" type="checkbox" />
+              <span>取消密码保护</span>
+            </label>
+            <button id="saveSettingsBtn" class="primary">保存设置</button>
+            <p id="settingsHint" class="hint"></p>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="promptDialog" class="modal hidden">
+      <form id="promptForm" class="modal-card">
+        <div class="panel-head">
+          <h2>添加提示词</h2>
+          <button class="ghost" type="button" data-action="close-prompt-dialog">关闭</button>
+        </div>
+        <label class="field">
+          <span>标题</span>
+          <input id="promptTitle" placeholder="例如：产品摄影 / 奇幻角色 / 建筑概念" />
+        </label>
+        <label class="field">
+          <span>提示词</span>
+          <textarea id="promptText" rows="7" placeholder="保存常用提示词，之后可一键填充到工作台。"></textarea>
+        </label>
+        <label class="field">
+          <span>标签</span>
+          <input id="promptTags" placeholder="逗号或空格分隔" />
+        </label>
+        <button id="addPromptBtn" class="primary" type="submit">保存提示词</button>
+      </form>
+    </div>
+
+    <div id="imageEditDialog" class="modal hidden">
+      <form id="imageEditForm" class="modal-card">
+        <div class="panel-head">
+          <h2>编辑图片信息</h2>
+          <button class="ghost" type="button" data-action="close-image-edit">关闭</button>
+        </div>
+        <input id="editImageId" type="hidden" />
+        <label class="field">
+          <span>标题</span>
+          <input id="editImageTitle" placeholder="图片标题" />
+        </label>
+        <label class="field">
+          <span>标签</span>
+          <input id="editImageTags" placeholder="逗号或空格分隔" />
+        </label>
+        <div class="dialog-actions">
+          <button class="primary" type="submit">保存</button>
+          <button id="deleteImageBtn" class="ghost danger" type="button">删除图片</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="promptEditDialog" class="modal hidden">
+      <form id="promptEditForm" class="modal-card">
+        <div class="panel-head">
+          <h2>编辑提示词</h2>
+          <button class="ghost" type="button" data-action="close-prompt-edit">关闭</button>
+        </div>
+        <input id="editPromptId" type="hidden" />
+        <label class="field">
+          <span>标题</span>
+          <input id="editPromptTitle" placeholder="提示词标题" />
+        </label>
+        <label class="field">
+          <span>提示词</span>
+          <textarea id="editPromptText" rows="7" placeholder="提示词内容"></textarea>
+        </label>
+        <label class="field">
+          <span>标签</span>
+          <input id="editPromptTags" placeholder="逗号或空格分隔" />
+        </label>
+        <button class="primary" type="submit">保存修改</button>
+      </form>
+    </div>
+
+    <div id="confirmDialog" class="modal hidden">
+      <div class="modal-card confirm-card">
+        <h2 id="confirmTitle">确认操作</h2>
+        <p id="confirmMessage" class="muted"></p>
+        <div class="dialog-actions">
+          <button id="confirmOkBtn" class="ghost danger" type="button">确认</button>
+          <button id="confirmCancelBtn" class="primary" type="button">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="lightbox" class="modal hidden">
+      <div class="lightbox-card">
+        <button class="lightbox-close" data-action="close-lightbox">关闭</button>
+        <img id="lightboxImage" alt="大图预览" />
+        <h2 id="lightboxTitle"></h2>
+        <button id="lightboxEditBtn" class="icon-btn lightbox-edit" type="button" title="作为图生图原图编辑">
+          <i class="fa-solid fa-pen-to-square"></i>
+        </button>
+        <a id="lightboxDownload" class="icon-btn lightbox-download" href="#" download title="下载当前图片">
+          <i class="fa-solid fa-download"></i>
+        </a>
+      </div>
+    </div>
+
+    <div id="maskPainterDialog" class="modal hidden">
+      <div class="mask-painter-card">
+        <div class="panel-head">
+          <div>
+            <h2>涂抹蒙版</h2>
+            <p class="muted">黑色保留原图，涂抹区域会变透明并交给模型编辑。</p>
+          </div>
+          <button class="ghost" type="button" data-action="close-mask-painter">关闭</button>
+        </div>
+        <div class="mask-toolbar">
+          <label class="field">
+            <span>画笔大小</span>
+            <input id="brushSizeInput" type="range" min="8" max="160" value="48" />
+          </label>
+          <button id="maskUndoBtn" class="ghost" type="button"><i class="fa-solid fa-rotate-left"></i> 撤销</button>
+          <button id="maskClearBtn" class="ghost" type="button"><i class="fa-solid fa-eraser"></i> 清空</button>
+          <button id="maskSaveBtn" class="primary narrow" type="button">使用此蒙版</button>
+        </div>
+        <div id="maskCanvasWrap" class="mask-canvas-wrap">
+          <canvas id="maskCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div id="loginOverlay" class="login-overlay hidden">
+      <form id="loginForm" class="login-card">
+        <span class="brand-mark">G</span>
+        <h1>登录工作台</h1>
+        <p>输入 WebUI 密码后继续使用。</p>
+        <input id="loginPassword" type="password" placeholder="密码" autofocus />
+        <button class="primary" type="submit">登录</button>
+        <p id="loginHint" class="hint"></p>
+      </form>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
