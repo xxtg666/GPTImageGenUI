@@ -18,6 +18,10 @@ const state = {
   maskBaseImage: null,
   maskPaintCanvas: null,
   galleryColumns: 3,
+  galleryTags: [],
+  selectedGalleryTags: [],
+  promptTags: [],
+  selectedPromptTags: [],
   confirmResolve: null,
   textModeSize: "1024x1024",
   defaultRetries: 0,
@@ -111,6 +115,7 @@ function makeEndpointDraft(endpoint = {}) {
     api_key: "",
     has_api_key: Boolean(endpoint.has_api_key || endpoint.api_key),
     clear_api_key: false,
+    collapsed: endpoint.collapsed ?? true,
   };
 }
 
@@ -120,30 +125,36 @@ function renderEndpointList() {
     .map(
       (endpoint, index) => `
         <section class="endpoint-card" data-endpoint-id="${endpoint.id}">
-          <div class="panel-head">
-            <h3>后端 ${index + 1}</h3>
-            <button class="ghost danger" type="button" data-action="remove-endpoint">删除</button>
+          <div class="endpoint-head">
+            <button class="endpoint-toggle" type="button" data-action="toggle-endpoint" aria-expanded="${!endpoint.collapsed}">
+              <i class="fa-solid fa-chevron-${endpoint.collapsed ? "right" : "down"}"></i>
+              <span>${escapeHtml(endpoint.alias || `后端 ${index + 1}`)}</span>
+              <small>${escapeHtml(endpoint.model || "")}</small>
+            </button>
+            <button class="ghost danger compact-danger" type="button" data-action="remove-endpoint">删除</button>
           </div>
-          <label class="field">
-            <span>别名</span>
-            <input class="endpoint-alias" value="${escapeHtml(endpoint.alias)}" placeholder="例如 主线路 / NewAPI / 备用节点" />
-          </label>
-          <label class="field">
-            <span>接口基地址（含 /v1）</span>
-            <input class="endpoint-base-url" value="${escapeHtml(endpoint.base_url)}" placeholder="https://your-api.example.com/v1" />
-          </label>
-          <label class="field">
-            <span>模型名</span>
-            <input class="endpoint-model" value="${escapeHtml(endpoint.model)}" placeholder="gpt-image-1 / gpt-image-2" />
-          </label>
-          <label class="field">
-            <span>API Key</span>
-            <input class="endpoint-api-key" type="password" placeholder="${endpoint.has_api_key ? "已保存，留空则保持不变" : "输入 API Key"}" />
-          </label>
-          <label class="check-row">
-            <input class="endpoint-clear-api-key" type="checkbox" ${endpoint.clear_api_key ? "checked" : ""} />
-            <span>清除该后端已保存的 API Key</span>
-          </label>
+          <div class="endpoint-body ${endpoint.collapsed ? "hidden" : ""}">
+            <label class="field">
+              <span>别名</span>
+              <input class="endpoint-alias" value="${escapeHtml(endpoint.alias)}" placeholder="例如 主线路 / NewAPI / 备用节点" />
+            </label>
+            <label class="field">
+              <span>接口基地址（含 /v1）</span>
+              <input class="endpoint-base-url" value="${escapeHtml(endpoint.base_url)}" placeholder="https://your-api.example.com/v1" />
+            </label>
+            <label class="field">
+              <span>模型名</span>
+              <input class="endpoint-model" value="${escapeHtml(endpoint.model)}" placeholder="gpt-image-1 / gpt-image-2" />
+            </label>
+            <label class="field">
+              <span>API Key</span>
+              <input class="endpoint-api-key" type="password" placeholder="${endpoint.has_api_key ? "已保存，留空则保持不变" : "输入 API Key"}" />
+            </label>
+            <label class="check-row">
+              <input class="endpoint-clear-api-key" type="checkbox" ${endpoint.clear_api_key ? "checked" : ""} />
+              <span>清除该后端已保存的 API Key</span>
+            </label>
+          </div>
         </section>
       `,
     )
@@ -173,6 +184,7 @@ function collectEndpointsFromForm() {
       model: card.querySelector(".endpoint-model").value.trim(),
       api_key: card.querySelector(".endpoint-api-key").value.trim(),
       clear_api_key: card.querySelector(".endpoint-clear-api-key").checked,
+      collapsed: existing.collapsed,
     };
   });
 }
@@ -657,6 +669,7 @@ async function clearTaskHistory() {
 function renderImageCard(item) {
   const tags = (item.tags || []).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("");
   const title = item.title || item.revised_prompt || "未命名图片";
+  const archivedBadge = item.archived ? `<span class="tag archive-tag">已归档</span>` : "";
   const sourceButton = item.mode === "image" && item.source_url
     ? `<button class="icon-btn" data-action="open-source-lightbox" title="查看原图"><i class="fa-regular fa-image"></i></button>`
     : "";
@@ -671,6 +684,7 @@ function renderImageCard(item) {
           <span>${escapeHtml(item.size || "")}</span>
           <span>${escapeHtml(item.model || "")}</span>
           <span>${item.mode === "image" ? "图生图" : "文生图"}</span>
+          ${archivedBadge}
           ${tags}
         </div>
         <div class="icon-actions">
@@ -691,11 +705,40 @@ function renderImageCard(item) {
 async function loadGallery() {
   const query = new URLSearchParams({
     q: $("#gallerySearch")?.value || "",
-    tag: $("#galleryTag")?.value || "",
+    tags: state.selectedGalleryTags.join(","),
+    show_archived: $("#showArchivedImages")?.checked ? "1" : "",
   });
   const data = await api(`/api/images?${query.toString()}`);
   state.images = data.images || [];
+  state.galleryTags = data.available_tags || [];
+  renderGalleryTagFilter();
   renderGallery();
+}
+
+function renderGalleryTagFilter() {
+  const menu = $("#galleryTagMenu");
+  const summary = $("#galleryTagSummary");
+  state.selectedGalleryTags = state.selectedGalleryTags.filter((tag) => state.galleryTags.includes(tag));
+  summary.textContent = state.selectedGalleryTags.length ? `已选择 ${state.selectedGalleryTags.length} 个标签` : "全部标签";
+  if (!state.galleryTags.length) {
+    menu.innerHTML = `<p class="muted">暂无标签</p>`;
+    return;
+  }
+  menu.innerHTML = `
+    <button class="tag-clear" type="button" data-action="clear-gallery-tags">清除选择</button>
+    <div class="tag-options">
+      ${state.galleryTags
+        .map(
+          (tag) => `
+            <label class="tag-option">
+              <input type="checkbox" value="${escapeHtml(tag)}" ${state.selectedGalleryTags.includes(tag) ? "checked" : ""}>
+              <span>${escapeHtml(tag)}</span>
+            </label>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function getGalleryColumnCount() {
@@ -725,7 +768,8 @@ async function saveImageMeta(card) {
   const id = $("#editImageId").value;
   const title = $("#editImageTitle").value;
   const tags = $("#editImageTags").value;
-  await api(`/api/images/${id}`, { method: "PATCH", body: { title, tags } });
+  const archived = $("#editImageArchived").checked;
+  await api(`/api/images/${id}`, { method: "PATCH", body: { title, tags, archived } });
   $("#imageEditDialog").classList.add("hidden");
   await loadGallery();
   toast("图片信息已保存");
@@ -765,6 +809,7 @@ function openImageEdit(id) {
   $("#editImageId").value = item.id;
   $("#editImageTitle").value = item.title || item.revised_prompt || "";
   $("#editImageTags").value = (item.tags || []).join(", ");
+  $("#editImageArchived").checked = Boolean(item.archived);
   $("#imageEditDialog").classList.remove("hidden");
 }
 
@@ -820,22 +865,67 @@ function safeDownloadName(value) {
 
 async function loadPrompts() {
   const data = await api("/api/prompts");
-  const q = ($("#promptSearch")?.value || "").toLowerCase().trim();
   state.prompts = data.prompts || [];
-  const prompts = q
+  renderPromptTagFilter();
+  renderPrompts();
+}
+
+function renderPrompts() {
+  const q = ($("#promptSearch")?.value || "").toLowerCase().trim();
+  let prompts = q
     ? state.prompts.filter((item) =>
         [item.title, item.prompt, ...(item.tags || [])].join(" ").toLowerCase().includes(q),
       )
     : state.prompts;
+  if (state.selectedPromptTags.length) {
+    const selected = new Set(state.selectedPromptTags.map((tag) => tag.toLowerCase()));
+    prompts = prompts.filter((item) => {
+      const tags = new Set((item.tags || []).map((tag) => tag.toLowerCase()));
+      return Array.from(selected).every((tag) => tags.has(tag));
+    });
+  }
   $("#promptList").innerHTML = prompts.length
     ? prompts.map(renderPromptCard).join("")
     : `<p class="muted">还没有收藏提示词。</p>`;
 }
 
+function renderPromptTagFilter() {
+  const menu = $("#promptTagMenu");
+  const summary = $("#promptTagSummary");
+  state.promptTags = Array.from(new Set(state.prompts.flatMap((item) => item.tags || []))).sort((a, b) =>
+    a.localeCompare(b),
+  );
+  state.selectedPromptTags = state.selectedPromptTags.filter((tag) => state.promptTags.includes(tag));
+  summary.textContent = state.selectedPromptTags.length ? `已选择 ${state.selectedPromptTags.length} 个标签` : "全部标签";
+  if (!state.promptTags.length) {
+    menu.innerHTML = `<p class="muted">暂无标签</p>`;
+    return;
+  }
+  menu.innerHTML = `
+    <button class="tag-clear" type="button" data-action="clear-prompt-tags">清除选择</button>
+    <div class="tag-options">
+      ${state.promptTags
+        .map(
+          (tag) => `
+            <label class="tag-option">
+              <input type="checkbox" value="${escapeHtml(tag)}" ${state.selectedPromptTags.includes(tag) ? "checked" : ""}>
+              <span>${escapeHtml(tag)}</span>
+            </label>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderPromptCard(item) {
   const tags = (item.tags || []).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("");
+  const reference = item.reference_url
+    ? `<img class="prompt-reference-thumb" src="${item.reference_url}" alt="${escapeHtml(item.title)} 的参考图" loading="lazy">`
+    : "";
   return `
     <article class="prompt-card" data-id="${item.id}">
+      ${reference}
       <h3>${escapeHtml(item.title)}</h3>
       <p class="prompt-text">${escapeHtml(item.prompt)}</p>
       <div class="meta-row">${tags}</div>
@@ -852,17 +942,18 @@ function renderPromptCard(item) {
 async function addPrompt(event) {
   event?.preventDefault?.();
   try {
-    await api("/api/prompts", {
-      method: "POST",
-      body: {
-        title: $("#promptTitle").value,
-        prompt: $("#promptText").value,
-        tags: $("#promptTags").value,
-      },
-    });
+    const form = new FormData();
+    form.append("title", $("#promptTitle").value);
+    form.append("prompt", $("#promptText").value);
+    form.append("tags", $("#promptTags").value);
+    const reference = $("#promptReferenceImage").files[0];
+    if (reference) form.append("reference_image", reference);
+    await api("/api/prompts", { method: "POST", body: form });
     $("#promptTitle").value = "";
     $("#promptText").value = "";
     $("#promptTags").value = "";
+    $("#promptReferenceImage").value = "";
+    renderReferencePreview("#promptReferencePreview", "");
     $("#promptDialog").classList.add("hidden");
     await loadPrompts();
     toast("提示词已保存");
@@ -887,22 +978,42 @@ function openPromptEdit(card) {
   $("#editPromptTitle").value = item.title || "";
   $("#editPromptText").value = item.prompt || "";
   $("#editPromptTags").value = (item.tags || []).join(", ");
+  $("#editPromptReferenceImage").value = "";
+  $("#clearPromptReference").checked = false;
+  renderReferencePreview("#editPromptReferencePreview", item.reference_url || "");
   $("#promptEditDialog").classList.remove("hidden");
 }
 
 async function savePromptEdit(event) {
   event.preventDefault();
-  await api(`/api/prompts/${$("#editPromptId").value}`, {
-    method: "PATCH",
-    body: {
-      title: $("#editPromptTitle").value,
-      prompt: $("#editPromptText").value,
-      tags: $("#editPromptTags").value,
-    },
-  });
+  const form = new FormData();
+  form.append("title", $("#editPromptTitle").value);
+  form.append("prompt", $("#editPromptText").value);
+  form.append("tags", $("#editPromptTags").value);
+  if ($("#clearPromptReference").checked) form.append("clear_reference", "true");
+  const reference = $("#editPromptReferenceImage").files[0];
+  if (reference) form.append("reference_image", reference);
+  await api(`/api/prompts/${$("#editPromptId").value}`, { method: "PATCH", body: form });
   $("#promptEditDialog").classList.add("hidden");
   await loadPrompts();
   toast("提示词已更新");
+}
+
+function renderReferencePreview(selector, url, title = "参考图") {
+  const node = $(selector);
+  if (!node) return;
+  if (!url) {
+    node.classList.add("empty");
+    node.innerHTML = `<p class="muted">未添加参考图。</p>`;
+    return;
+  }
+  node.classList.remove("empty");
+  node.innerHTML = `<img src="${url}" alt="${escapeHtml(title)}">`;
+}
+
+function previewPromptReference(inputSelector, previewSelector) {
+  const file = $(inputSelector).files[0];
+  renderReferencePreview(previewSelector, file ? URL.createObjectURL(file) : "", file?.name || "参考图");
 }
 
 async function loadSettings() {
@@ -963,6 +1074,13 @@ function escapeHtml(value) {
 }
 
 document.addEventListener("click", async (event) => {
+  const clickedElement = event.target instanceof Element ? event.target : event.target.parentElement;
+  if (!clickedElement?.closest("#galleryTagFilter")) {
+    $("#galleryTagMenu")?.classList.add("hidden");
+  }
+  if (!clickedElement?.closest("#promptTagFilter")) {
+    $("#promptTagMenu")?.classList.add("hidden");
+  }
   if (event.target.id === "lightbox") {
     $("#lightbox").classList.add("hidden");
     return;
@@ -987,7 +1105,7 @@ document.addEventListener("click", async (event) => {
     $("#maskPainterDialog").classList.add("hidden");
     return;
   }
-  const target = event.target.closest("button, a");
+  const target = clickedElement?.closest("button, a");
   if (!target) return;
   const action = target.dataset.action;
   const card = target.closest("[data-id]");
@@ -1018,8 +1136,24 @@ document.addEventListener("click", async (event) => {
     if (action === "prompt-copy") await copyText(decodeURIComponent(target.dataset.prompt));
     if (action === "prompt-edit") openPromptEdit(card);
     if (action === "prompt-delete") await deletePrompt(card);
+    if (action === "clear-gallery-tags") {
+      state.selectedGalleryTags = [];
+      await loadGallery();
+    }
+    if (action === "clear-prompt-tags") {
+      state.selectedPromptTags = [];
+      renderPromptTagFilter();
+      renderPrompts();
+    }
+    if (action === "toggle-endpoint" && endpointCard) {
+      state.endpoints = collectEndpointsFromForm();
+      const endpoint = state.endpoints.find((item) => item.id === endpointCard.dataset.endpointId);
+      if (endpoint) endpoint.collapsed = !endpoint.collapsed;
+      renderEndpointList();
+    }
     if (action === "remove-endpoint" && endpointCard) {
       if (state.endpoints.length <= 1) throw new Error("至少保留一个后端接口");
+      state.endpoints = collectEndpointsFromForm();
       state.endpoints = state.endpoints.filter((item) => item.id !== endpointCard.dataset.endpointId);
       if (!state.endpoints.find((item) => item.id === state.activeEndpointId)) {
         state.activeEndpointId = state.endpoints[0]?.id || "";
@@ -1036,7 +1170,8 @@ $("#mobileMenuBtn").addEventListener("click", openMobileNav);
 $("#mobileNavBackdrop").addEventListener("click", closeMobileNav);
 $("#generateBtn").addEventListener("click", generate);
 $("#addEndpointBtn").addEventListener("click", () => {
-  state.endpoints.push(makeEndpointDraft({ alias: `后端 ${state.endpoints.length + 1}` }));
+  state.endpoints = collectEndpointsFromForm();
+  state.endpoints.push(makeEndpointDraft({ alias: `后端 ${state.endpoints.length + 1}`, collapsed: false }));
   renderEndpointList();
 });
 $("#activeEndpointSelect").addEventListener("change", (event) => {
@@ -1053,7 +1188,28 @@ $("#taskClearHistory").addEventListener("click", () => {
   clearTaskHistory().catch((error) => toast(error.message));
 });
 $("#gallerySearch").addEventListener("input", () => window.clearTimeout(loadGallery.timer) || (loadGallery.timer = setTimeout(loadGallery, 250)));
-$("#galleryTag").addEventListener("input", () => window.clearTimeout(loadGallery.timer) || (loadGallery.timer = setTimeout(loadGallery, 250)));
+$("#showArchivedImages").addEventListener("change", loadGallery);
+$("#galleryTagToggle").addEventListener("click", () => {
+  $("#galleryTagMenu").classList.toggle("hidden");
+});
+$("#galleryTagMenu").addEventListener("change", (event) => {
+  if (event.target.type !== "checkbox") return;
+  state.selectedGalleryTags = Array.from($("#galleryTagMenu").querySelectorAll("input[type='checkbox']:checked")).map(
+    (input) => input.value,
+  );
+  loadGallery().catch((error) => toast(error.message));
+});
+$("#promptTagToggle").addEventListener("click", () => {
+  $("#promptTagMenu").classList.toggle("hidden");
+});
+$("#promptTagMenu").addEventListener("change", (event) => {
+  if (event.target.type !== "checkbox") return;
+  state.selectedPromptTags = Array.from($("#promptTagMenu").querySelectorAll("input[type='checkbox']:checked")).map(
+    (input) => input.value,
+  );
+  renderPromptTagFilter();
+  renderPrompts();
+});
 $("#promptForm").addEventListener("submit", addPrompt);
 $("#promptEditForm").addEventListener("submit", savePromptEdit);
 $("#confirmOkBtn").addEventListener("click", () => resolveConfirm(true));
@@ -1087,7 +1243,21 @@ $("#maskCanvas").addEventListener("pointercancel", endMaskStroke);
 $("#maskUndoBtn").addEventListener("click", undoMaskStroke);
 $("#maskClearBtn").addEventListener("click", clearMaskCanvas);
 $("#maskSaveBtn").addEventListener("click", () => savePaintedMask().catch((error) => toast(error.message)));
-$("#promptSearch").addEventListener("input", loadPrompts);
+$("#promptSearch").addEventListener("input", renderPrompts);
+$("#promptReferenceImage").addEventListener("change", () => previewPromptReference("#promptReferenceImage", "#promptReferencePreview"));
+$("#editPromptReferenceImage").addEventListener("change", () => {
+  $("#clearPromptReference").checked = false;
+  previewPromptReference("#editPromptReferenceImage", "#editPromptReferencePreview");
+});
+$("#clearPromptReference").addEventListener("change", () => {
+  if ($("#clearPromptReference").checked) {
+    $("#editPromptReferenceImage").value = "";
+    renderReferencePreview("#editPromptReferencePreview", "");
+  } else {
+    const item = state.prompts.find((prompt) => prompt.id === $("#editPromptId").value);
+    renderReferencePreview("#editPromptReferencePreview", item?.reference_url || "");
+  }
+});
 $("#saveSettingsBtn").addEventListener("click", saveSettings);
 $("#editImage").addEventListener("change", updateEditPreview);
 window.addEventListener("resize", () => {

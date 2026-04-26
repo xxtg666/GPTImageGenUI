@@ -185,10 +185,22 @@
               <p class="eyebrow">Archive</p>
               <h1>画廊</h1>
             </div>
-            <div class="toolbar">
+            <div class="gallery-toolbar">
               <input id="gallerySearch" type="search" placeholder="搜索提示词、模型、标签、分辨率" />
-              <input id="galleryTag" type="search" placeholder="按标签过滤" />
-              <button id="galleryReload" class="ghost">刷新</button>
+              <div class="tag-filter" id="galleryTagFilter">
+                <button id="galleryTagToggle" class="filter-button" type="button">
+                  <span id="galleryTagSummary">全部标签</span>
+                  <i class="fa-solid fa-chevron-down"></i>
+                </button>
+                <div id="galleryTagMenu" class="tag-filter-menu hidden"></div>
+              </div>
+              <label class="archive-toggle">
+                <input id="showArchivedImages" type="checkbox" />
+                <span>显示归档图片</span>
+              </label>
+              <button id="galleryReload" class="icon-btn toolbar-icon" type="button" title="刷新画廊">
+                <i class="fa-solid fa-rotate-right"></i>
+              </button>
             </div>
           </div>
           <div id="galleryGrid" class="gallery-grid"></div>
@@ -205,7 +217,16 @@
           <section class="panel">
             <div class="panel-head">
               <h2>收藏列表</h2>
-              <input id="promptSearch" type="search" placeholder="搜索提示词" />
+              <div class="prompt-toolbar">
+                <input id="promptSearch" type="search" placeholder="搜索提示词" />
+                <div class="tag-filter" id="promptTagFilter">
+                  <button id="promptTagToggle" class="filter-button" type="button">
+                    <span id="promptTagSummary">全部标签</span>
+                    <i class="fa-solid fa-chevron-down"></i>
+                  </button>
+                  <div id="promptTagMenu" class="tag-filter-menu hidden"></div>
+                </div>
+              </div>
             </div>
             <div id="promptList" class="prompt-list"></div>
           </section>
@@ -218,52 +239,60 @@
               <h1>设置</h1>
             </div>
           </div>
-          <section class="panel settings-panel">
-            <div class="panel-head">
-              <h2>后端接口</h2>
-              <button id="addEndpointBtn" class="ghost" type="button">添加后端</button>
-            </div>
-            <div id="endpointList" class="endpoint-list"></div>
-            <label class="field">
-              <span>当前活跃后端</span>
-              <select id="settingsActiveEndpointSelect"></select>
-            </label>
-            <label class="field">
-              <span>预期生成时间（秒，用于任务进度条）</span>
-              <input id="expectedTaskSecondsInput" type="number" min="5" max="3600" value="90" />
-            </label>
-            <label class="field">
-              <span>服务端口（下次启动生效）</span>
-              <input id="serverPortInput" type="number" min="1" max="65535" value="7860" />
-            </label>
-            <label class="field">
-              <span>失败自动重试次数</span>
-              <input id="defaultRetriesInput" type="number" min="0" max="9" value="0" />
-            </label>
-            <label class="field">
-              <span>文生图默认分辨率</span>
-              <select id="defaultTextSizeSelect">
-                <option value="1024x1024">1024 × 1024</option>
-                <option value="1536x1024">1536 × 1024</option>
-                <option value="1024x1536">1024 × 1536</option>
-                <option value="1792x1024">1792 × 1024</option>
-                <option value="1024x1792">1024 × 1792</option>
-                <option value="512x512">512 × 512</option>
-                <option value="256x256">256 × 256</option>
-                <option value="auto">auto</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>新 WebUI 密码</span>
-              <input id="passwordInput" type="password" placeholder="留空则保持不变" />
-            </label>
-            <label class="check-row">
-              <input id="clearPassword" type="checkbox" />
-              <span>取消密码保护</span>
-            </label>
-            <button id="saveSettingsBtn" class="primary">保存设置</button>
-            <p id="settingsHint" class="hint"></p>
-          </section>
+          <div class="settings-stack">
+            <section class="panel settings-panel">
+              <div class="panel-head">
+                <h2>后端接口</h2>
+                <button id="addEndpointBtn" class="ghost" type="button">添加后端</button>
+              </div>
+              <label class="field">
+                <span>当前活跃后端</span>
+                <select id="settingsActiveEndpointSelect"></select>
+              </label>
+              <div id="endpointList" class="endpoint-list"></div>
+            </section>
+
+            <section class="panel settings-panel">
+              <div class="panel-head">
+                <h2>其它配置</h2>
+              </div>
+              <label class="field">
+                <span>预期生成时间（秒，用于任务进度条）</span>
+                <input id="expectedTaskSecondsInput" type="number" min="5" max="3600" value="90" />
+              </label>
+              <label class="field">
+                <span>服务端口（下次启动生效）</span>
+                <input id="serverPortInput" type="number" min="1" max="65535" value="7860" />
+              </label>
+              <label class="field">
+                <span>失败自动重试次数</span>
+                <input id="defaultRetriesInput" type="number" min="0" max="9" value="0" />
+              </label>
+              <label class="field">
+                <span>文生图默认分辨率</span>
+                <select id="defaultTextSizeSelect">
+                  <option value="1024x1024">1024 × 1024</option>
+                  <option value="1536x1024">1536 × 1024</option>
+                  <option value="1024x1536">1024 × 1536</option>
+                  <option value="1792x1024">1792 × 1024</option>
+                  <option value="1024x1792">1024 × 1792</option>
+                  <option value="512x512">512 × 512</option>
+                  <option value="256x256">256 × 256</option>
+                  <option value="auto">auto</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>新 WebUI 密码</span>
+                <input id="passwordInput" type="password" placeholder="留空则保持不变" />
+              </label>
+              <label class="check-row">
+                <input id="clearPassword" type="checkbox" />
+                <span>取消密码保护</span>
+              </label>
+              <button id="saveSettingsBtn" class="primary">保存设置</button>
+              <p id="settingsHint" class="hint"></p>
+            </section>
+          </div>
         </section>
       </main>
     </div>
@@ -286,6 +315,13 @@
           <span>标签</span>
           <input id="promptTags" placeholder="逗号或空格分隔" />
         </label>
+        <label class="field">
+          <span>参考图（仅展示）</span>
+          <input id="promptReferenceImage" type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <div id="promptReferencePreview" class="reference-preview empty">
+          <p class="muted">未添加参考图。</p>
+        </div>
         <button id="addPromptBtn" class="primary" type="submit">保存提示词</button>
       </form>
     </div>
@@ -304,6 +340,10 @@
         <label class="field">
           <span>标签</span>
           <input id="editImageTags" placeholder="逗号或空格分隔" />
+        </label>
+        <label class="check-row">
+          <input id="editImageArchived" type="checkbox" />
+          <span>归档这张图片</span>
         </label>
         <div class="dialog-actions">
           <button class="primary" type="submit">保存</button>
@@ -330,6 +370,17 @@
         <label class="field">
           <span>标签</span>
           <input id="editPromptTags" placeholder="逗号或空格分隔" />
+        </label>
+        <label class="field">
+          <span>参考图（仅展示）</span>
+          <input id="editPromptReferenceImage" type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <div id="editPromptReferencePreview" class="reference-preview empty">
+          <p class="muted">未添加参考图。</p>
+        </div>
+        <label class="check-row">
+          <input id="clearPromptReference" type="checkbox" />
+          <span>移除当前参考图</span>
         </label>
         <button class="primary" type="submit">保存修改</button>
       </form>

@@ -250,6 +250,17 @@ def parse_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     return json.loads(raw.decode("utf-8"))
 
 
+def parse_request_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
+    length = int(handler.headers.get("Content-Length", "0") or "0")
+    if length == 0:
+        return {}
+    raw = handler.rfile.read(length)
+    content_type = handler.headers.get("Content-Type", "")
+    if content_type.startswith("multipart/form-data"):
+        return parse_multipart(content_type, raw)
+    return json.loads(raw.decode("utf-8"))
+
+
 def parse_cookie(header: str | None) -> dict[str, str]:
     jar = cookies.SimpleCookie()
     if header:
@@ -427,6 +438,7 @@ def save_generated_images(
                 "mode": mode,
                 "model": model,
                 "tags": [],
+                "archived": False,
             }
             db["images"].insert(0, record)
             saved.append(record)
@@ -444,6 +456,26 @@ def save_source_image(image: dict[str, Any] | None) -> dict[str, str] | None:
     filename = f"{int(time.time())}-source-{image_id[:8]}{ext}"
     (IMAGES_DIR / filename).write_bytes(image["content"])
     return {"filename": filename, "url": f"/media/{filename}"}
+
+
+def save_reference_image(image: dict[str, Any] | None) -> dict[str, str] | None:
+    if not image or not image.get("content"):
+        return None
+    ext = Path(image.get("filename", "")).suffix.lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+        ext = mimetypes.guess_extension(image.get("content_type", "").split(";")[0]) or ".png"
+    image_id = uuid.uuid4().hex
+    filename = f"{int(time.time())}-prompt-ref-{image_id[:8]}{ext}"
+    (IMAGES_DIR / filename).write_bytes(image["content"])
+    return {"filename": filename, "url": f"/media/{filename}"}
+
+
+def delete_stored_image(filename: str) -> None:
+    if not filename:
+        return
+    file_path = (IMAGES_DIR / safe_filename(filename)).resolve()
+    if str(file_path).startswith(str(IMAGES_DIR.resolve())) and file_path.exists():
+        file_path.unlink()
 
 
 def public_task(task: dict[str, Any]) -> dict[str, Any]:
@@ -1024,8 +1056,17 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             return
         params = urllib.parse.parse_qs(query)
         q = (params.get("q", [""])[0] or "").lower().strip()
-        tag = (params.get("tag", [""])[0] or "").lower().strip()
-        images = get_db()["images"]
+        selected_tags = {
+            tag.strip().lower()
+            for raw in params.get("tags", params.get("tag", []))
+            for tag in re.split(r"[,，]+", raw)
+            if tag.strip()
+        }
+        show_archived = (params.get("show_archived", [""])[0] or "").lower() in {"1", "true", "yes", "on"}
+        images = [item | {"archived": bool(item.get("archived"))} for item in get_db()["images"]]
+        if not show_archived:
+            images = [item for item in images if not item.get("archived")]
+        available_tags = sorted({tag for item in images for tag in item.get("tags", [])}, key=str.lower)
         if q:
             images = [
                 item
@@ -1037,9 +1078,13 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                 or q in item.get("model", "").lower()
                 or any(q in tag_item.lower() for tag_item in item.get("tags", []))
             ]
-        if tag:
-            images = [item for item in images if tag in [tag_item.lower() for tag_item in item.get("tags", [])]]
-        self.send_json(200, {"images": images})
+        if selected_tags:
+            images = [
+                item
+                for item in images
+                if selected_tags.issubset({tag_item.lower() for tag_item in item.get("tags", [])})
+            ]
+        self.send_json(200, {"images": images, "available_tags": available_tags})
 
     def handle_update_image(self, path: str) -> None:
         if not self.require_auth():
@@ -1054,6 +1099,8 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                         item["title"] = str(body.get("title", "")).strip()
                     if "tags" in body:
                         item["tags"] = normalize_tags(body.get("tags", []))
+                    if "archived" in body:
+                        item["archived"] = bool(body.get("archived"))
                     save_db(db)
                     self.send_json(200, {"image": item})
                     return
@@ -1086,21 +1133,32 @@ class ImageGenHandler(BaseHTTPRequestHandler):
     def handle_list_prompts(self) -> None:
         if not self.require_auth():
             return
-        self.send_json(200, {"prompts": get_db()["prompts"]})
+        prompts = [
+            item
+            | {
+                "reference_filename": item.get("reference_filename", ""),
+                "reference_url": item.get("reference_url", ""),
+            }
+            for item in get_db()["prompts"]
+        ]
+        self.send_json(200, {"prompts": prompts})
 
     def handle_create_prompt(self) -> None:
         if not self.require_auth():
             return
-        body = parse_json_body(self)
+        body = parse_request_body(self)
         text = str(body.get("prompt", "")).strip()
         if not text:
             self.send_error_json(400, "提示词不能为空")
             return
+        reference = save_reference_image(normalize_single_file(body.get("reference_image"), "reference_image"))
         item = {
             "id": uuid.uuid4().hex,
             "title": str(body.get("title", "")).strip() or text[:28],
             "prompt": text,
             "tags": normalize_tags(body.get("tags", [])),
+            "reference_filename": reference.get("filename", "") if reference else "",
+            "reference_url": reference.get("url", "") if reference else "",
             "created_at": int(time.time()),
         }
         with DB_LOCK:
@@ -1113,7 +1171,9 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         if not self.require_auth():
             return
         prompt_id = path.split("/")[3]
-        body = parse_json_body(self)
+        body = parse_request_body(self)
+        new_reference = save_reference_image(normalize_single_file(body.get("reference_image"), "reference_image"))
+        old_reference = ""
         with DB_LOCK:
             db = get_db()
             for item in db["prompts"]:
@@ -1124,20 +1184,40 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                         item["prompt"] = str(body["prompt"]).strip() or item["prompt"]
                     if "tags" in body:
                         item["tags"] = normalize_tags(body["tags"])
+                    if str(body.get("clear_reference", "")).lower() in {"1", "true", "yes", "on"} or new_reference:
+                        old_reference = item.get("reference_filename", "")
+                        item["reference_filename"] = ""
+                        item["reference_url"] = ""
+                    if new_reference:
+                        item["reference_filename"] = new_reference["filename"]
+                        item["reference_url"] = new_reference["url"]
                     save_db(db)
+                    if old_reference:
+                        delete_stored_image(old_reference)
                     self.send_json(200, {"prompt": item})
                     return
+        if new_reference:
+            delete_stored_image(new_reference.get("filename", ""))
         self.send_error_json(404, "Not found")
 
     def handle_delete_prompt(self, path: str) -> None:
         if not self.require_auth():
             return
         prompt_id = path.split("/")[3]
+        deleted_reference = ""
         with DB_LOCK:
             db = get_db()
             before = len(db["prompts"])
-            db["prompts"] = [item for item in db["prompts"] if item["id"] != prompt_id]
+            kept_prompts = []
+            for item in db["prompts"]:
+                if item["id"] == prompt_id:
+                    deleted_reference = item.get("reference_filename", "")
+                    continue
+                kept_prompts.append(item)
+            db["prompts"] = kept_prompts
             save_db(db)
+        if deleted_reference:
+            delete_stored_image(deleted_reference)
         self.send_json(200, {"ok": len(db["prompts"]) != before})
 
 
