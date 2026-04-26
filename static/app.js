@@ -131,7 +131,6 @@ function renderEndpointList() {
               <span>${escapeHtml(endpoint.alias || `后端 ${index + 1}`)}</span>
               <small>${escapeHtml(endpoint.model || "")}</small>
             </button>
-            <button class="ghost danger compact-danger" type="button" data-action="remove-endpoint">删除</button>
           </div>
           <div class="endpoint-body ${endpoint.collapsed ? "hidden" : ""}">
             <label class="field">
@@ -154,6 +153,9 @@ function renderEndpointList() {
               <input class="endpoint-clear-api-key" type="checkbox" ${endpoint.clear_api_key ? "checked" : ""} />
               <span>清除该后端已保存的 API Key</span>
             </label>
+            <div class="endpoint-actions">
+              <button class="ghost danger compact-danger" type="button" data-action="remove-endpoint">删除后端</button>
+            </div>
           </div>
         </section>
       `,
@@ -535,7 +537,6 @@ function renderResultViewer() {
     <div class="result-pager">
       <button class="ghost icon-btn" data-action="result-prev" ${images.length <= 1 ? "disabled" : ""}><i class="fa-solid fa-chevron-left"></i></button>
       <strong>${escapeHtml(title)}</strong>
-      <span class="count-pill">${index + 1}/${images.length}</span>
       <button class="ghost icon-btn" data-action="result-next" ${images.length <= 1 ? "disabled" : ""}><i class="fa-solid fa-chevron-right"></i></button>
     </div>
   `;
@@ -828,6 +829,25 @@ function openLightbox(id, variant = "generated") {
   $("#lightboxTitle").textContent = displayTitle;
   $("#lightboxDownload").href = isSource ? item.source_url : `/api/images/${item.id}/download`;
   $("#lightboxDownload").setAttribute("download", isSource ? item.source_filename || "source-image" : "");
+  $("#lightboxEditBtn").classList.remove("hidden");
+  $("#lightboxEditBtn").disabled = false;
+  $("#lightbox").classList.remove("hidden");
+}
+
+function openPromptReferenceLightbox(id) {
+  const item = state.prompts.find((prompt) => prompt.id === id);
+  if (!item?.reference_url) return;
+  const title = `${item.title || "提示词参考图"} · 参考图`;
+  state.lightboxItem = null;
+  state.lightboxUrl = item.reference_url;
+  state.lightboxTitle = title;
+  $("#lightboxImage").src = item.reference_url;
+  $("#lightboxImage").alt = title;
+  $("#lightboxTitle").textContent = title;
+  $("#lightboxDownload").href = item.reference_url;
+  $("#lightboxDownload").setAttribute("download", `${safeDownloadName(title)}${pathExt(item.reference_url)}`);
+  $("#lightboxEditBtn").classList.add("hidden");
+  $("#lightboxEditBtn").disabled = true;
   $("#lightbox").classList.remove("hidden");
 }
 
@@ -854,6 +874,11 @@ function mimeToExt(type) {
   if (type === "image/jpeg") return ".jpg";
   if (type === "image/webp") return ".webp";
   return ".png";
+}
+
+function pathExt(value) {
+  const match = String(value || "").split("?")[0].match(/\.(png|jpe?g|webp)$/i);
+  return match ? match[0].toLowerCase() : ".png";
 }
 
 function safeDownloadName(value) {
@@ -921,19 +946,33 @@ function renderPromptTagFilter() {
 function renderPromptCard(item) {
   const tags = (item.tags || []).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("");
   const reference = item.reference_url
-    ? `<img class="prompt-reference-thumb" src="${item.reference_url}" alt="${escapeHtml(item.title)} 的参考图" loading="lazy">`
+    ? `
+      <button class="prompt-reference-btn" type="button" data-action="open-prompt-reference" title="查看参考图大图">
+        <img class="prompt-reference-thumb" src="${item.reference_url}" alt="${escapeHtml(item.title)} 的参考图" loading="lazy">
+      </button>
+    `
     : "";
   return `
-    <article class="prompt-card" data-id="${item.id}">
+    <article class="prompt-card ${item.reference_url ? "has-reference" : ""}" data-id="${item.id}">
       ${reference}
-      <h3>${escapeHtml(item.title)}</h3>
-      <p class="prompt-text">${escapeHtml(item.prompt)}</p>
+      <div class="prompt-card-content">
+        <h3>${escapeHtml(item.title)}</h3>
+        <p class="prompt-text">${escapeHtml(item.prompt)}</p>
+      </div>
       <div class="meta-row">${tags}</div>
-      <div class="card-actions">
-        <button data-action="prompt-fill" data-prompt="${encodeURIComponent(item.prompt)}">填充</button>
-        <button data-action="prompt-copy" data-prompt="${encodeURIComponent(item.prompt)}">复制</button>
-        <button data-action="prompt-edit">编辑</button>
-        <button data-action="prompt-delete">删除</button>
+      <div class="icon-actions prompt-actions">
+        <button class="icon-btn" data-action="prompt-fill" data-prompt="${encodeURIComponent(item.prompt)}" title="填充到工作台">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        </button>
+        <button class="icon-btn" data-action="prompt-copy" data-prompt="${encodeURIComponent(item.prompt)}" title="复制提示词">
+          <i class="fa-regular fa-copy"></i>
+        </button>
+        <button class="icon-btn" data-action="prompt-edit" title="编辑提示词">
+          <i class="fa-solid fa-pen"></i>
+        </button>
+        <button class="icon-btn danger-icon" data-action="prompt-delete" title="删除提示词">
+          <i class="fa-solid fa-trash"></i>
+        </button>
       </div>
     </article>
   `;
@@ -1122,6 +1161,7 @@ document.addEventListener("click", async (event) => {
     if (action === "open-image-edit") openImageEdit(card.dataset.id);
     if (action === "open-lightbox") openLightbox(target.dataset.imageId);
     if (action === "open-source-lightbox") openLightbox(card.dataset.id, "source");
+    if (action === "open-prompt-reference") openPromptReferenceLightbox(card.dataset.id);
     if (action === "result-prev") {
       state.resultIndex = Math.max(0, state.resultIndex - 1);
       renderResultViewer();
@@ -1154,6 +1194,9 @@ document.addEventListener("click", async (event) => {
     if (action === "remove-endpoint" && endpointCard) {
       if (state.endpoints.length <= 1) throw new Error("至少保留一个后端接口");
       state.endpoints = collectEndpointsFromForm();
+      const endpoint = state.endpoints.find((item) => item.id === endpointCard.dataset.endpointId);
+      const confirmed = await confirmAction("删除后端", `确认删除「${endpoint?.alias || "这个后端"}」？保存设置后生效。`);
+      if (!confirmed) return;
       state.endpoints = state.endpoints.filter((item) => item.id !== endpointCard.dataset.endpointId);
       if (!state.endpoints.find((item) => item.id === state.activeEndpointId)) {
         state.activeEndpointId = state.endpoints[0]?.id || "";

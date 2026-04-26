@@ -394,6 +394,7 @@ select:focus {
 
 .prompt-list {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
 }
 
@@ -454,6 +455,13 @@ select:focus {
   width: 100%;
 }
 
+.prompt-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  min-height: 220px;
+}
+
 .image-preview {
   display: block;
   width: 100%;
@@ -472,6 +480,7 @@ select:focus {
 
 .result-viewer {
   display: grid;
+  min-width: 0;
   gap: 14px;
 }
 
@@ -504,23 +513,17 @@ select:focus {
   align-items: center;
   justify-content: center;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
   text-align: center;
 }
 
 .result-pager strong {
   min-width: 0;
+  max-width: min(760px, calc(100vw - 190px));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.count-pill {
-  border-radius: 999px;
-  padding: 5px 9px;
-  color: var(--paper);
-  background: var(--accent-dark);
-  font-size: 0.82rem;
-  font-weight: 900;
 }
 
 .icon-actions {
@@ -599,6 +602,20 @@ select:focus {
   padding: 14px;
 }
 
+.prompt-card.has-reference .prompt-card-content {
+  padding-right: 112px;
+}
+
+.prompt-card h3 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.prompt-card-content {
+  min-width: 0;
+}
+
 .prompt-text {
   display: -webkit-box;
   min-height: 3.2em;
@@ -631,10 +648,36 @@ select:focus {
 .prompt-reference-thumb {
   display: block;
   width: 100%;
-  height: auto;
-  max-height: 220px;
+  height: 100%;
   object-fit: contain;
   background: var(--paper-strong);
+}
+
+.prompt-reference-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 92px;
+  height: 92px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0;
+  background: var(--paper-strong);
+  box-shadow: 0 10px 28px rgba(28, 26, 22, 0.12);
+}
+
+.prompt-reference-btn:hover {
+  border-color: rgba(200, 82, 27, 0.52);
+}
+
+.prompt-actions {
+  align-self: end;
+}
+
+.danger-icon {
+  color: #8f3714;
+  background: rgba(255, 237, 226, 0.7);
 }
 
 .card-actions {
@@ -806,6 +849,7 @@ select:focus {
 }
 
 .task-toolbar {
+  gap: 10px;
   max-width: none;
 }
 
@@ -829,13 +873,6 @@ select:focus {
   border-radius: 18px;
   padding: 10px;
   background: rgba(255, 255, 255, 0.28);
-}
-
-.endpoint-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
 }
 
 .endpoint-toggle {
@@ -873,6 +910,12 @@ select:focus {
 
 .endpoint-body {
   padding: 12px 6px 4px;
+}
+
+.endpoint-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 .compact-danger {
@@ -1294,7 +1337,4 @@ select:focus {
     width: 100%;
   }
 
-  .endpoint-head {
-    grid-template-columns: 1fr;
-  }
 }
