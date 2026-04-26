@@ -562,6 +562,7 @@ function startTaskPolling() {
 function renderTasks() {
   const fullList = $("#taskList");
   const compactList = $("#workbenchTaskList");
+  updateTaskControls();
   const html = state.tasks.length
     ? state.tasks.map(renderTaskCard).join("")
     : `<p class="muted">暂无任务。提交生成后会显示状态、重试次数和错误详情。</p>`;
@@ -571,6 +572,15 @@ function renderTasks() {
       ? state.tasks.slice(0, 5).map(renderTaskCard).join("")
       : `<p class="muted">暂无任务。</p>`;
   }
+}
+
+function updateTaskControls() {
+  const clearButton = $("#taskClearHistory");
+  if (!clearButton) return;
+  const hasTasks = state.tasks.length > 0;
+  const hasActiveTasks = state.tasks.some((task) => ["queued", "running"].includes(task.status));
+  clearButton.classList.toggle("hidden", !hasTasks || hasActiveTasks);
+  clearButton.disabled = hasActiveTasks;
 }
 
 function renderTaskCard(task) {
@@ -629,6 +639,19 @@ function formatDuration(seconds) {
   const rest = value % 60;
   if (minutes <= 0) return `${rest}s`;
   return `${minutes}m ${rest}s`;
+}
+
+async function clearTaskHistory() {
+  const finishedTasks = state.tasks.filter((task) => ["succeeded", "failed"].includes(task.status));
+  if (!finishedTasks.length) {
+    toast("当前没有可清空的任务历史");
+    return;
+  }
+  const confirmed = await confirmAction("清空任务历史", `确认清空 ${finishedTasks.length} 条任务历史？进行中的任务不会被删除。`);
+  if (!confirmed) return;
+  await api("/api/tasks", { method: "DELETE" });
+  await loadTasks();
+  toast("任务历史已清空");
 }
 
 function renderImageCard(item) {
@@ -1026,6 +1049,9 @@ $("#settingsActiveEndpointSelect").addEventListener("change", (event) => {
 $("#sizeSelect").addEventListener("change", updateCustomSize);
 $("#galleryReload").addEventListener("click", loadGallery);
 $("#taskReload").addEventListener("click", loadTasks);
+$("#taskClearHistory").addEventListener("click", () => {
+  clearTaskHistory().catch((error) => toast(error.message));
+});
 $("#gallerySearch").addEventListener("input", () => window.clearTimeout(loadGallery.timer) || (loadGallery.timer = setTimeout(loadGallery, 250)));
 $("#galleryTag").addEventListener("input", () => window.clearTimeout(loadGallery.timer) || (loadGallery.timer = setTimeout(loadGallery, 250)));
 $("#promptForm").addEventListener("submit", addPrompt);

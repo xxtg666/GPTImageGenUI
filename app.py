@@ -456,6 +456,10 @@ def list_tasks() -> list[dict[str, Any]]:
         return [public_task(task.copy()) for task in tasks]
 
 
+def has_active_tasks_locked() -> bool:
+    return any(task["status"] in {"queued", "running"} for task in TASKS.values())
+
+
 def get_task(task_id: str) -> dict[str, Any] | None:
     with TASK_LOCK:
         task = TASKS.get(task_id)
@@ -515,6 +519,16 @@ def prune_tasks_locked() -> None:
     )
     for task in removable[: max(0, len(TASKS) - MAX_TASK_HISTORY)]:
         TASKS.pop(task["id"], None)
+
+
+def clear_task_history() -> int:
+    with TASK_LOCK:
+        if has_active_tasks_locked():
+            raise ValueError("仍有任务在进行中，暂时不能清空历史")
+        removable_ids = [task_id for task_id, task in TASKS.items() if task["status"] in {"succeeded", "failed"}]
+        for task_id in removable_ids:
+            TASKS.pop(task_id, None)
+        return len(removable_ids)
 
 
 def run_task(task_id: str) -> None:
@@ -664,8 +678,40 @@ class ImageGenHandler(BaseHTTPRequestHandler):
     server_version = "ImageGenUI/1.0"
 
     def end_headers(self) -> None:
-        self.send_header("Cache-Control", "no-store")
+        cache_control = getattr(self, "_cache_control", "no-store")
+        self.send_header("Cache-Control", cache_control)
+        self._cache_control = "no-store"
         super().end_headers()
+
+    def send_file_with_cache(
+        self,
+        file_path: Path,
+        *,
+        content_type: str,
+        download_name: str | None = None,
+        cache_control: str = "private, max-age=31536000, immutable",
+    ) -> None:
+        stat = file_path.stat()
+        etag = f'W/"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Last-Modified", self.date_time_string(stat.st_mtime))
+            self._cache_control = cache_control
+            self.end_headers()
+            return
+        data = file_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("ETag", etag)
+        self.send_header("Last-Modified", self.date_time_string(stat.st_mtime))
+        if download_name:
+            quoted_name = urllib.parse.quote(download_name)
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quoted_name}")
+        self._cache_control = cache_control
+        self.end_headers()
+        self.wfile.write(data)
 
     def send_json(self, status: int, payload: Any, extra_headers: dict[str, str] | None = None) -> None:
         data = json_bytes(payload)
@@ -760,7 +806,9 @@ class ImageGenHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         try:
             path = urllib.parse.urlparse(self.path).path
-            if path.startswith("/api/images/"):
+            if path == "/api/tasks":
+                self.handle_clear_task_history()
+            elif path.startswith("/api/images/"):
                 self.handle_delete_image(path)
             elif path.startswith("/api/prompts/"):
                 self.handle_delete_prompt(path)
@@ -796,12 +844,10 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         if not str(file_path).startswith(str(IMAGES_DIR.resolve())) or not file_path.exists():
             self.send_error_json(404, "Not found")
             return
-        data = file_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", mimetypes.guess_type(file_path.name)[0] or "image/png")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self.send_file_with_cache(
+            file_path,
+            content_type=mimetypes.guess_type(file_path.name)[0] or "image/png",
+        )
 
     def handle_download_image(self, path: str) -> None:
         if not self.require_auth():
@@ -812,15 +858,14 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             self.send_error_json(404, "Not found")
             return
         file_path = (IMAGES_DIR / record["filename"]).resolve()
-        data = file_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", mimetypes.guess_type(file_path.name)[0] or "image/png")
-        self.send_header("Content-Length", str(len(data)))
         prefix = safe_download_prefix(record.get("title") or record.get("revised_prompt") or "")
         download_name = f"{prefix}-{file_path.name}" if prefix else file_path.name
-        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{urllib.parse.quote(download_name)}")
-        self.end_headers()
-        self.wfile.write(data)
+        self.send_file_with_cache(
+            file_path,
+            content_type=mimetypes.guess_type(file_path.name)[0] or "image/png",
+            download_name=download_name,
+            cache_control="private, max-age=0, must-revalidate",
+        )
 
     def handle_me(self) -> None:
         config = get_config()
@@ -953,6 +998,16 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         if not self.require_auth():
             return
         self.send_json(200, {"tasks": list_tasks()})
+
+    def handle_clear_task_history(self) -> None:
+        if not self.require_auth():
+            return
+        try:
+            removed = clear_task_history()
+        except ValueError as exc:
+            self.send_error_json(409, str(exc))
+            return
+        self.send_json(200, {"ok": True, "removed": removed})
 
     def handle_get_task(self, path: str) -> None:
         if not self.require_auth():

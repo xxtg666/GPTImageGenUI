@@ -645,6 +645,10 @@ select:focus {
   width: min(280px, 100%);
 }
 
+.task-toolbar {
+  max-width: none;
+}
+
 .settings-panel {
   max-width: 760px;
 }
