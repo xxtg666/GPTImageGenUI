@@ -36,6 +36,12 @@ DEFAULT_CONFIG = {
     "expected_task_seconds": 90,
     "default_retries": 0,
     "default_text_size": "1024x1024",
+    "default_quality": "",
+    "default_style": "",
+    "default_background": "",
+    "default_moderation": "",
+    "default_output_format": "",
+    "default_output_compression": "",
     "server_port": 7860,
 }
 
@@ -649,11 +655,40 @@ def normalize_expected_seconds(value: Any) -> int:
 
 def normalize_default_size(value: Any) -> str:
     value = str(first_value(value) or "1024x1024").strip()
-    if value in {"1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792", "512x512", "256x256", "auto"}:
+    if value in {
+        "1024x1024",
+        "1536x1024",
+        "1024x1536",
+        "1792x1024",
+        "1024x1792",
+        "2048x2048",
+        "2048x1152",
+        "1152x2048",
+        "3840x2160",
+        "2160x3840",
+        "512x512",
+        "256x256",
+        "auto",
+    }:
         return value
     if re.match(r"^\d+x\d+$", value):
         return value
     return "1024x1024"
+
+
+def normalize_choice(value: Any, allowed: set[str]) -> str:
+    value = str(first_value(value) or "").strip()
+    return value if value in allowed else ""
+
+
+def normalize_output_compression(value: Any) -> str:
+    value = str(first_value(value) or "").strip()
+    if not value:
+        return ""
+    try:
+        return str(max(0, min(100, int(value))))
+    except ValueError:
+        return ""
 
 
 def normalize_port(value: Any) -> int:
@@ -663,12 +698,30 @@ def normalize_port(value: Any) -> int:
         return 7860
 
 
-def collect_image_options(values: dict[str, Any]) -> dict[str, Any]:
+def collect_image_options(values: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
+    config = config or {}
     options: dict[str, Any] = {"n": 1}
-    for key in ("quality", "style"):
+    defaults = {
+        "quality": config.get("default_quality", ""),
+        "style": config.get("default_style", ""),
+        "background": config.get("default_background", ""),
+        "moderation": config.get("default_moderation", ""),
+        "output_format": config.get("default_output_format", ""),
+        "output_compression": config.get("default_output_compression", ""),
+    }
+    for key in ("quality", "style", "background", "moderation", "output_format", "output_compression"):
         value = first_value(values.get(key))
+        if value in {None, ""}:
+            value = defaults.get(key, "")
         if value:
-            options[key] = value
+            if key == "output_compression":
+                compression = normalize_output_compression(value)
+                if compression:
+                    options[key] = int(compression)
+            else:
+                options[key] = value
+    if options.get("output_compression") is not None and options.get("output_format") not in {"jpeg", "webp"}:
+        options.pop("output_compression", None)
     return options
 
 
@@ -947,6 +1000,12 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                 "expected_task_seconds": normalize_expected_seconds(config.get("expected_task_seconds", 90)),
                 "default_retries": normalize_retry_count(config.get("default_retries", 0)),
                 "default_text_size": str(config.get("default_text_size", "1024x1024") or "1024x1024"),
+                "default_quality": normalize_choice(config.get("default_quality", ""), {"auto", "standard", "hd", "low", "medium", "high"}),
+                "default_style": normalize_choice(config.get("default_style", ""), {"vivid", "natural"}),
+                "default_background": normalize_choice(config.get("default_background", ""), {"auto", "opaque", "transparent"}),
+                "default_moderation": normalize_choice(config.get("default_moderation", ""), {"auto", "low"}),
+                "default_output_format": normalize_choice(config.get("default_output_format", ""), {"png", "jpeg", "webp"}),
+                "default_output_compression": normalize_output_compression(config.get("default_output_compression", "")),
                 "server_port": normalize_port(config.get("server_port", 7860)),
                 "has_api_key": bool(config.get("api_key")),
                 "password_set": bool(config.get("password_hash")),
@@ -968,6 +1027,18 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             config["default_retries"] = normalize_retry_count(body.get("default_retries"))
         if "default_text_size" in body:
             config["default_text_size"] = normalize_default_size(body.get("default_text_size"))
+        if "default_quality" in body:
+            config["default_quality"] = normalize_choice(body.get("default_quality"), {"auto", "standard", "hd", "low", "medium", "high"})
+        if "default_style" in body:
+            config["default_style"] = normalize_choice(body.get("default_style"), {"vivid", "natural"})
+        if "default_background" in body:
+            config["default_background"] = normalize_choice(body.get("default_background"), {"auto", "opaque", "transparent"})
+        if "default_moderation" in body:
+            config["default_moderation"] = normalize_choice(body.get("default_moderation"), {"auto", "low"})
+        if "default_output_format" in body:
+            config["default_output_format"] = normalize_choice(body.get("default_output_format"), {"png", "jpeg", "webp"})
+        if "default_output_compression" in body:
+            config["default_output_compression"] = normalize_output_compression(body.get("default_output_compression"))
         if "server_port" in body:
             config["server_port"] = normalize_port(body.get("server_port"))
         if body.get("password"):
@@ -988,7 +1059,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         size = normalize_size(body)
         config = get_config()
         retry_count = normalize_retry_count(body.get("retries", config.get("default_retries", 0)))
-        options = collect_image_options(body)
+        options = collect_image_options(body, config)
         if not prompt:
             self.send_error_json(400, "提示词不能为空")
             return
@@ -1005,7 +1076,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         size = normalize_size(fields)
         config = get_config()
         retry_count = normalize_retry_count(fields.get("retries", config.get("default_retries", 0)))
-        options = collect_image_options(fields)
+        options = collect_image_options(fields, config)
         if fields.get("image[]"):
             images = normalize_uploaded_files(fields.get("image[]"), "image[]")
         else:

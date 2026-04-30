@@ -98,6 +98,11 @@
                     <option value="1024x1536">1024 × 1536</option>
                     <option value="1792x1024">1792 × 1024</option>
                     <option value="1024x1792">1024 × 1792</option>
+                    <option value="2048x2048">2K Square · 2048 × 2048</option>
+                    <option value="2048x1152">2K Wide · 2048 × 1152</option>
+                    <option value="1152x2048">2K Tall · 1152 × 2048</option>
+                    <option value="3840x2160">4K Wide · 3840 × 2160</option>
+                    <option value="2160x3840">4K Tall · 2160 × 3840</option>
                     <option value="512x512">512 × 512</option>
                     <option value="256x256">256 × 256</option>
                     <option value="auto">auto</option>
@@ -127,6 +132,36 @@
                       <option value="medium">medium</option>
                       <option value="high">high</option>
                     </select>
+                  </label>
+                  <label class="field">
+                    <span>安全过滤 moderation</span>
+                    <select id="moderationSelect">
+                      <option value="">默认</option>
+                      <option value="auto">auto</option>
+                      <option value="low">low</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>背景 background</span>
+                    <select id="backgroundSelect">
+                      <option value="">默认</option>
+                      <option value="auto">auto</option>
+                      <option value="opaque">opaque</option>
+                      <option value="transparent">transparent</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>输出格式 output_format</span>
+                    <select id="outputFormatSelect">
+                      <option value="">默认</option>
+                      <option value="png">png</option>
+                      <option value="jpeg">jpeg</option>
+                      <option value="webp">webp</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>压缩率 output_compression</span>
+                    <input id="outputCompressionInput" type="number" min="0" max="100" placeholder="0-100，仅 jpeg/webp" />
                   </label>
                   <label class="field">
                     <span>风格 style</span>
@@ -276,11 +311,68 @@
                   <option value="1024x1536">1024 × 1536</option>
                   <option value="1792x1024">1792 × 1024</option>
                   <option value="1024x1792">1024 × 1792</option>
+                  <option value="2048x2048">2K Square · 2048 × 2048</option>
+                  <option value="2048x1152">2K Wide · 2048 × 1152</option>
+                  <option value="1152x2048">2K Tall · 1152 × 2048</option>
+                  <option value="3840x2160">4K Wide · 3840 × 2160</option>
+                  <option value="2160x3840">4K Tall · 2160 × 3840</option>
                   <option value="512x512">512 × 512</option>
                   <option value="256x256">256 × 256</option>
                   <option value="auto">auto</option>
                 </select>
               </label>
+              <div class="grid compact">
+                <label class="field">
+                  <span>默认质量</span>
+                  <select id="defaultQualitySelect">
+                    <option value="">不发送</option>
+                    <option value="auto">auto</option>
+                    <option value="standard">standard</option>
+                    <option value="hd">hd</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>默认安全过滤</span>
+                  <select id="defaultModerationSelect">
+                    <option value="">不发送</option>
+                    <option value="auto">auto</option>
+                    <option value="low">low</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>默认背景</span>
+                  <select id="defaultBackgroundSelect">
+                    <option value="">不发送</option>
+                    <option value="auto">auto</option>
+                    <option value="opaque">opaque</option>
+                    <option value="transparent">transparent</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>默认输出格式</span>
+                  <select id="defaultOutputFormatSelect">
+                    <option value="">不发送</option>
+                    <option value="png">png</option>
+                    <option value="jpeg">jpeg</option>
+                    <option value="webp">webp</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>默认输出压缩率</span>
+                  <input id="defaultOutputCompressionInput" type="number" min="0" max="100" placeholder="0-100，仅 jpeg/webp" />
+                </label>
+                <label class="field">
+                  <span>默认风格</span>
+                  <select id="defaultStyleSelect">
+                    <option value="">不发送</option>
+                    <option value="vivid">vivid</option>
+                    <option value="natural">natural</option>
+                  </select>
+                </label>
+              </div>
               <label class="field">
                 <span>新 WebUI 密码</span>
                 <input id="passwordInput" type="password" placeholder="留空则保持不变" />

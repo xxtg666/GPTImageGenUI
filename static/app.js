@@ -99,6 +99,10 @@ function collectImageOptions() {
   const entries = {
     quality: $("#qualitySelect").value,
     style: $("#styleSelect").value,
+    background: $("#backgroundSelect").value,
+    moderation: $("#moderationSelect").value,
+    output_format: $("#outputFormatSelect").value,
+    output_compression: $("#outputCompressionInput").value,
   };
   Object.entries(entries).forEach(([key, value]) => {
     if (value !== "") options[key] = value;
@@ -1064,6 +1068,18 @@ async function loadSettings() {
   $("#serverPortInput").value = settings.server_port || 7860;
   $("#defaultRetriesInput").value = settings.default_retries || 0;
   $("#defaultTextSizeSelect").value = settings.default_text_size || "1024x1024";
+  $("#defaultQualitySelect").value = settings.default_quality || "";
+  $("#defaultStyleSelect").value = settings.default_style || "";
+  $("#defaultBackgroundSelect").value = settings.default_background || "";
+  $("#defaultModerationSelect").value = settings.default_moderation || "";
+  $("#defaultOutputFormatSelect").value = settings.default_output_format || "";
+  $("#defaultOutputCompressionInput").value = settings.default_output_compression || "";
+  $("#qualitySelect").value = settings.default_quality || "";
+  $("#styleSelect").value = settings.default_style || "";
+  $("#backgroundSelect").value = settings.default_background || "";
+  $("#moderationSelect").value = settings.default_moderation || "";
+  $("#outputFormatSelect").value = settings.default_output_format || "";
+  $("#outputCompressionInput").value = settings.default_output_compression || "";
   state.defaultRetries = settings.default_retries || 0;
   state.textModeSize = settings.default_text_size || "1024x1024";
   if (state.mode === "text") {
@@ -1085,6 +1101,12 @@ async function saveSettings() {
         server_port: $("#serverPortInput").value,
         default_retries: $("#defaultRetriesInput").value,
         default_text_size: $("#defaultTextSizeSelect").value,
+        default_quality: $("#defaultQualitySelect").value,
+        default_style: $("#defaultStyleSelect").value,
+        default_background: $("#defaultBackgroundSelect").value,
+        default_moderation: $("#defaultModerationSelect").value,
+        default_output_format: $("#defaultOutputFormatSelect").value,
+        default_output_compression: $("#defaultOutputCompressionInput").value,
         password: $("#passwordInput").value,
         clear_password: $("#clearPassword").checked,
       },
