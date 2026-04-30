@@ -42,6 +42,7 @@ DEFAULT_CONFIG = {
     "default_moderation": "",
     "default_output_format": "",
     "default_output_compression": "",
+    "web_icon_url": "",
     "server_port": 7860,
 }
 
@@ -355,7 +356,13 @@ def upstream_url(config: dict[str, Any], path: str) -> str:
     return config.get("base_url", "").rstrip("/") + path
 
 
-def request_upstream(config: dict[str, Any], path: str, body: bytes, content_type: str) -> dict[str, Any]:
+def request_upstream(
+    config: dict[str, Any],
+    path: str,
+    body: bytes,
+    content_type: str,
+    client: httpx.Client | None = None,
+) -> dict[str, Any]:
     headers = {
         "Content-Type": content_type,
         "Accept": "*/*",
@@ -378,11 +385,15 @@ def request_upstream(config: dict[str, Any], path: str, body: bytes, content_typ
     }
     if config.get("api_key"):
         headers["Authorization"] = f'Bearer {config["api_key"]}'
+    owns_client = client is None
+    client = client or httpx.Client(timeout=httpx.Timeout(180.0), follow_redirects=True, http2=True)
     try:
-        with httpx.Client(timeout=httpx.Timeout(180.0), follow_redirects=True, http2=True) as client:
-            response = client.post(upstream_url(config, path), content=body, headers=headers)
+        response = client.post(upstream_url(config, path), content=body, headers=headers)
     except httpx.HTTPError as exc:
         raise UpstreamError(f"Upstream request failed: {exc}", detail=str(exc), raw=str(exc)) from exc
+    finally:
+        if owns_client:
+            client.close()
     raw = response.content
     raw_text = response.text
     if response.status_code >= 400:
@@ -485,7 +496,7 @@ def delete_stored_image(filename: str) -> None:
 
 
 def public_task(task: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in task.items() if key not in {"request"}}
+    return {key: value for key, value in task.items() if key not in {"request", "client"}}
 
 
 def list_tasks() -> list[dict[str, Any]]:
@@ -496,6 +507,12 @@ def list_tasks() -> list[dict[str, Any]]:
 
 def has_active_tasks_locked() -> bool:
     return any(task["status"] in {"queued", "running"} for task in TASKS.values())
+
+
+def is_task_cancelled(task_id: str) -> bool:
+    with TASK_LOCK:
+        task = TASKS.get(task_id)
+        return bool(task and task.get("status") == "cancelled")
 
 
 def get_task(task_id: str) -> dict[str, Any] | None:
@@ -511,6 +528,13 @@ def update_task(task_id: str, **changes: Any) -> None:
             return
         task.update(changes)
         task["updated_at"] = int(time.time())
+
+
+def set_task_client(task_id: str, client: httpx.Client | None) -> None:
+    with TASK_LOCK:
+        task = TASKS.get(task_id)
+        if task:
+            task["client"] = client
 
 
 def create_task(mode: str, prompt: str, size: str, retry_count: int, request_data: dict[str, Any]) -> dict[str, Any]:
@@ -538,6 +562,7 @@ def create_task(mode: str, prompt: str, size: str, retry_count: int, request_dat
         "images": [],
         "error": "",
         "raw_error": None,
+        "client": None,
         "request": request_data,
     }
     with TASK_LOCK:
@@ -563,10 +588,31 @@ def clear_task_history() -> int:
     with TASK_LOCK:
         if has_active_tasks_locked():
             raise ValueError("仍有任务在进行中，暂时不能清空历史")
-        removable_ids = [task_id for task_id, task in TASKS.items() if task["status"] in {"succeeded", "failed"}]
+        removable_ids = [task_id for task_id, task in TASKS.items() if task["status"] in {"succeeded", "failed", "cancelled"}]
         for task_id in removable_ids:
             TASKS.pop(task_id, None)
         return len(removable_ids)
+
+
+def cancel_task(task_id: str) -> dict[str, Any] | None:
+    with TASK_LOCK:
+        task = TASKS.get(task_id)
+        if not task:
+            return None
+        if task["status"] in {"succeeded", "failed", "cancelled"}:
+            return public_task(task.copy())
+        task["status"] = "cancelled"
+        task["error"] = "任务已手动中断"
+        task["completed_at"] = int(time.time())
+        task["updated_at"] = int(time.time())
+        client = task.get("client")
+        snapshot = public_task(task.copy())
+    if client:
+        try:
+            client.close()
+        except Exception:
+            pass
+    return snapshot
 
 
 def run_task(task_id: str) -> None:
@@ -580,27 +626,40 @@ def run_task(task_id: str) -> None:
         prompt = task["prompt"]
         size = task["size"]
     for attempt in range(1, max_attempts + 1):
+        if is_task_cancelled(task_id):
+            return
         update_task(task_id, status="running", attempt=attempt, error="", raw_error=None)
         try:
             config = request_data["config"]
             endpoint = request_data["endpoint"]
             options = request_data.get("options", {})
+            client = httpx.Client(timeout=httpx.Timeout(180.0), follow_redirects=True, http2=True)
+            set_task_client(task_id, client)
             if mode == "text":
                 payload = {"model": endpoint["model"], "prompt": prompt, "size": size} | options
-                response = request_upstream(endpoint, "/images/generations", json_bytes(payload), "application/json")
+                response = request_upstream(endpoint, "/images/generations", json_bytes(payload), "application/json", client)
                 source_image = None
             else:
                 fields = {"model": endpoint["model"], "prompt": prompt, "size": size}
                 fields.update({key: str(value) for key, value in options.items()})
                 files = request_data["images"].copy()
-                source_image = save_source_image(request_data["images"][0] if request_data.get("images") else None)
+                source_image = None
                 if request_data.get("mask"):
                     files.append(request_data["mask"])
                 multipart_body, content_type = build_multipart(
                     fields,
                     files,
                 )
-                response = request_upstream(endpoint, "/images/edits", multipart_body, content_type)
+                response = request_upstream(endpoint, "/images/edits", multipart_body, content_type, client)
+            set_task_client(task_id, None)
+            try:
+                client.close()
+            except Exception:
+                pass
+            if is_task_cancelled(task_id):
+                return
+            if mode == "image":
+                source_image = save_source_image(request_data["images"][0] if request_data.get("images") else None)
             saved = save_generated_images(response, prompt, size, mode, endpoint["model"], source_image)
             update_task(
                 task_id,
@@ -612,17 +671,25 @@ def run_task(task_id: str) -> None:
             )
             return
         except UpstreamError as exc:
+            set_task_client(task_id, None)
             raw_error = {
                 "message": str(exc),
                 "status": exc.status,
                 "detail": exc.detail,
                 "raw": exc.raw,
             }
+            if is_task_cancelled(task_id):
+                return
             update_task(task_id, error=format_upstream_error(exc), raw_error=raw_error)
         except Exception as exc:
+            set_task_client(task_id, None)
+            if is_task_cancelled(task_id):
+                return
             update_task(task_id, error=str(exc), raw_error={"message": str(exc)})
         if attempt < max_attempts:
             time.sleep(min(2 * attempt, 8))
+    if is_task_cancelled(task_id):
+        return
     update_task(task_id, status="failed", completed_at=int(time.time()))
 
 
@@ -862,6 +929,8 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                 self.handle_generate()
             elif path == "/api/edit":
                 self.handle_edit()
+            elif path.startswith("/api/tasks/") and path.endswith("/cancel"):
+                self.handle_cancel_task(path)
             elif path == "/api/prompts":
                 self.handle_create_prompt()
             else:
@@ -959,6 +1028,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             {
                 "password_set": bool(config.get("password_hash")),
                 "authenticated": self.is_authenticated(),
+                "web_icon_url": str(config.get("web_icon_url", "") or ""),
             },
         )
 
@@ -992,6 +1062,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                         "alias": item["alias"],
                         "base_url": item["base_url"],
                         "model": item["model"],
+                        "api_key": item.get("api_key", ""),
                         "has_api_key": bool(item.get("api_key")),
                     }
                     for item in config.get("endpoints", [])
@@ -1006,6 +1077,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                 "default_moderation": normalize_choice(config.get("default_moderation", ""), {"auto", "low"}),
                 "default_output_format": normalize_choice(config.get("default_output_format", ""), {"png", "jpeg", "webp"}),
                 "default_output_compression": normalize_output_compression(config.get("default_output_compression", "")),
+                "web_icon_url": str(config.get("web_icon_url", "") or ""),
                 "server_port": normalize_port(config.get("server_port", 7860)),
                 "has_api_key": bool(config.get("api_key")),
                 "password_set": bool(config.get("password_hash")),
@@ -1039,6 +1111,8 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             config["default_output_format"] = normalize_choice(body.get("default_output_format"), {"png", "jpeg", "webp"})
         if "default_output_compression" in body:
             config["default_output_compression"] = normalize_output_compression(body.get("default_output_compression"))
+        if "web_icon_url" in body:
+            config["web_icon_url"] = str(body.get("web_icon_url", "") or "").strip()
         if "server_port" in body:
             config["server_port"] = normalize_port(body.get("server_port"))
         if body.get("password"):
@@ -1111,6 +1185,16 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             self.send_error_json(409, str(exc))
             return
         self.send_json(200, {"ok": True, "removed": removed})
+
+    def handle_cancel_task(self, path: str) -> None:
+        if not self.require_auth():
+            return
+        task_id = path.split("/")[3]
+        task = cancel_task(task_id)
+        if not task:
+            self.send_error_json(404, "Not found")
+            return
+        self.send_json(200, {"task": task})
 
     def handle_get_task(self, path: str) -> None:
         if not self.require_auth():

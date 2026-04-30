@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GPT 绘图工作台</title>
+    <link id="faviconLink" rel="icon" href="" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css" />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
@@ -15,23 +16,23 @@
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
-          <span class="brand-mark">G</span>
-          <div>
+          <span class="brand-mark app-brand-mark">G</span>
+          <div class="brand-copy">
             <strong>GPT 绘图工作台</strong>
             <small>Generations · Edits · Gallery</small>
           </div>
         </div>
         <nav class="nav">
-          <button class="nav-item active" data-page="workbench">工作台</button>
-          <button class="nav-item" data-page="tasks">任务</button>
-          <button class="nav-item" data-page="gallery">画廊</button>
-          <button class="nav-item" data-page="prompts">提示词</button>
-          <button class="nav-item" data-page="settings">设置</button>
+          <button class="nav-item active" data-page="workbench"><i class="fa-solid fa-wand-magic-sparkles"></i><span>工作台</span></button>
+          <button class="nav-item" data-page="tasks"><i class="fa-solid fa-list-check"></i><span>任务</span></button>
+          <button class="nav-item" data-page="gallery"><i class="fa-regular fa-images"></i><span>画廊</span></button>
+          <button class="nav-item" data-page="prompts"><i class="fa-regular fa-bookmark"></i><span>提示词</span></button>
+          <button class="nav-item" data-page="settings"><i class="fa-solid fa-gear"></i><span>设置</span></button>
         </nav>
-        <div class="status-card">
-          <span class="dot"></span>
-          <span id="statusText">检查登录状态</span>
-        </div>
+        <button id="sidebarCollapseBtn" class="collapse-btn" type="button" title="收起侧栏">
+          <i class="fa-solid fa-angles-left"></i>
+          <span>收起侧栏</span>
+        </button>
       </aside>
 
       <main class="main">
@@ -300,6 +301,10 @@
                 <input id="serverPortInput" type="number" min="1" max="65535" value="7860" />
               </label>
               <label class="field">
+                <span>网页图标 URL</span>
+                <input id="webIconUrlInput" type="url" placeholder="https://example.com/icon.png" />
+              </label>
+              <label class="field">
                 <span>失败自动重试次数</span>
                 <input id="defaultRetriesInput" type="number" min="0" max="9" value="0" />
               </label>
@@ -529,7 +534,7 @@
 
     <div id="loginOverlay" class="login-overlay hidden">
       <form id="loginForm" class="login-card">
-        <span class="brand-mark">G</span>
+        <span class="brand-mark app-brand-mark">G</span>
         <h1>登录工作台</h1>
         <p>输入 WebUI 密码后继续使用。</p>
         <input id="loginPassword" type="password" placeholder="密码" autofocus />

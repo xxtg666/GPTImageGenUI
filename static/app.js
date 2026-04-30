@@ -30,6 +30,8 @@ const state = {
   lightboxTitle: "",
   endpoints: [],
   activeEndpointId: "",
+  settingsLoaded: false,
+  webIconUrl: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -68,7 +70,6 @@ function switchPage(page) {
   closeMobileNav();
   if (page === "gallery") loadGallery();
   if (page === "prompts") loadPrompts();
-  if (page === "settings") loadSettings();
   if (page === "tasks") loadTasks();
 }
 
@@ -80,6 +81,14 @@ function openMobileNav() {
 function closeMobileNav() {
   $(".sidebar").classList.remove("open");
   $("#mobileNavBackdrop").classList.add("hidden");
+}
+
+function setSidebarCollapsed(collapsed) {
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  $("#sidebarCollapseBtn").title = collapsed ? "展开侧栏" : "收起侧栏";
+  $("#sidebarCollapseBtn i").className = collapsed ? "fa-solid fa-angles-right" : "fa-solid fa-angles-left";
+  $("#sidebarCollapseBtn span").textContent = collapsed ? "展开侧栏" : "收起侧栏";
+  localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0");
 }
 
 function collectSize() {
@@ -116,7 +125,7 @@ function makeEndpointDraft(endpoint = {}) {
     alias: endpoint.alias || "",
     base_url: endpoint.base_url || "https://api.openai.com/v1",
     model: endpoint.model || "gpt-image-1",
-    api_key: "",
+    api_key: endpoint.api_key || "",
     has_api_key: Boolean(endpoint.has_api_key || endpoint.api_key),
     clear_api_key: false,
     collapsed: endpoint.collapsed ?? true,
@@ -151,7 +160,12 @@ function renderEndpointList() {
             </label>
             <label class="field">
               <span>API Key</span>
-              <input class="endpoint-api-key" type="password" placeholder="${endpoint.has_api_key ? "已保存，留空则保持不变" : "输入 API Key"}" />
+              <div class="secret-row">
+                <input class="endpoint-api-key" type="password" value="${escapeHtml(endpoint.api_key)}" placeholder="${endpoint.has_api_key ? "已保存" : "输入 API Key"}" />
+                <button class="icon-btn" type="button" data-action="toggle-secret" title="显示或隐藏 API Key">
+                  <i class="fa-regular fa-eye"></i>
+                </button>
+              </div>
             </label>
             <label class="check-row">
               <input class="endpoint-clear-api-key" type="checkbox" ${endpoint.clear_api_key ? "checked" : ""} />
@@ -444,12 +458,12 @@ async function savePaintedMask() {
 
 async function initAuth() {
   const me = await api("/api/me");
-  $("#statusText").textContent = me.password_set ? "已启用密码保护" : "未设置 WebUI 密码";
+  applyWebIcon(me.web_icon_url || state.webIconUrl || "");
   if (me.password_set && !me.authenticated) {
     $("#loginOverlay").classList.remove("hidden");
   } else {
     $("#loginOverlay").classList.add("hidden");
-    await Promise.all([loadGallery(), loadPrompts(), loadSettings(), loadTasks()]);
+    await Promise.all([loadGallery(), loadPrompts(), state.settingsLoaded ? Promise.resolve() : loadSettings(), loadTasks()]);
     startTaskPolling();
   }
 }
@@ -536,7 +550,9 @@ function renderResultViewer() {
   const title = item.title || item.revised_prompt || "未命名图片";
   viewer.innerHTML = `
     <div class="result-stage">
-      <img src="${item.url}" alt="${escapeHtml(title)}" data-action="open-lightbox" data-image-id="${item.id}">
+      <button class="result-image-btn" type="button" data-action="open-lightbox" data-image-id="${item.id}" aria-label="查看大图">
+        <img src="${item.url}" alt="${escapeHtml(title)}">
+      </button>
     </div>
     <div class="result-pager">
       <button class="ghost icon-btn" data-action="result-prev" ${images.length <= 1 ? "disabled" : ""}><i class="fa-solid fa-chevron-left"></i></button>
@@ -606,7 +622,9 @@ function renderTaskCard(task) {
     running: "生成中",
     succeeded: "已完成",
     failed: "失败",
+    cancelled: "已中断",
   }[task.status] || task.status;
+  const canCancel = ["queued", "running"].includes(task.status);
   const images = task.images?.length
     ? `<div class="task-images">${task.images.map((image) => `<img src="${image.url}" alt="${escapeHtml(image.prompt)}" loading="lazy">`).join("")}</div>`
     : "";
@@ -636,6 +654,7 @@ function renderTaskCard(task) {
       ${task.error ? `<p class="task-error">${escapeHtml(task.error)}</p>` : ""}
       ${rawError}
       ${images}
+      ${canCancel ? `<div class="card-actions compact-actions"><button class="ghost danger" data-action="cancel-task" data-task-id="${task.id}"><i class="fa-solid fa-stop"></i> 中断任务</button></div>` : ""}
       ${
         task.images?.length
           ? `<div class="card-actions"><button data-action="fill" data-prompt="${encodeURIComponent(task.prompt)}" data-size="${escapeHtml(task.size)}">填充</button><button data-action="copy" data-prompt="${encodeURIComponent(task.prompt)}">复制提示词</button></div>`
@@ -659,7 +678,7 @@ function formatDuration(seconds) {
 }
 
 async function clearTaskHistory() {
-  const finishedTasks = state.tasks.filter((task) => ["succeeded", "failed"].includes(task.status));
+  const finishedTasks = state.tasks.filter((task) => ["succeeded", "failed", "cancelled"].includes(task.status));
   if (!finishedTasks.length) {
     toast("当前没有可清空的任务历史");
     return;
@@ -669,6 +688,14 @@ async function clearTaskHistory() {
   await api("/api/tasks", { method: "DELETE" });
   await loadTasks();
   toast("任务历史已清空");
+}
+
+async function cancelTask(taskId) {
+  const confirmed = await confirmAction("中断任务", `确认中断任务 #${taskId.slice(0, 8)}？`);
+  if (!confirmed) return;
+  await api(`/api/tasks/${taskId}/cancel`, { method: "POST" });
+  await loadTasks();
+  toast("任务已中断");
 }
 
 function renderImageCard(item) {
@@ -1059,13 +1086,29 @@ function previewPromptReference(inputSelector, previewSelector) {
   renderReferencePreview(previewSelector, file ? URL.createObjectURL(file) : "", file?.name || "参考图");
 }
 
+function applyWebIcon(url) {
+  state.webIconUrl = url || "";
+  $("#faviconLink").href = state.webIconUrl || "";
+  $$(".app-brand-mark").forEach((node) => {
+    if (state.webIconUrl) {
+      node.innerHTML = `<img src="${escapeHtml(state.webIconUrl)}" alt="应用图标">`;
+      node.classList.add("has-image");
+    } else {
+      node.textContent = "G";
+      node.classList.remove("has-image");
+    }
+  });
+}
+
 async function loadSettings() {
   const settings = await api("/api/settings");
+  state.settingsLoaded = true;
   state.endpoints = (settings.endpoints || []).map(makeEndpointDraft);
   state.activeEndpointId = settings.active_endpoint_id || state.endpoints[0]?.id || "";
   renderEndpointList();
   $("#expectedTaskSecondsInput").value = settings.expected_task_seconds || 90;
   $("#serverPortInput").value = settings.server_port || 7860;
+  $("#webIconUrlInput").value = settings.web_icon_url || "";
   $("#defaultRetriesInput").value = settings.default_retries || 0;
   $("#defaultTextSizeSelect").value = settings.default_text_size || "1024x1024";
   $("#defaultQualitySelect").value = settings.default_quality || "";
@@ -1087,6 +1130,7 @@ async function loadSettings() {
     updateCustomSize();
   }
   $("#passwordInput").placeholder = settings.password_set ? "已设置，留空则保持不变" : "设置 WebUI 密码";
+  applyWebIcon(settings.web_icon_url || "");
 }
 
 async function saveSettings() {
@@ -1099,6 +1143,7 @@ async function saveSettings() {
         active_endpoint_id: $("#settingsActiveEndpointSelect").value,
         expected_task_seconds: $("#expectedTaskSecondsInput").value,
         server_port: $("#serverPortInput").value,
+        web_icon_url: $("#webIconUrlInput").value,
         default_retries: $("#defaultRetriesInput").value,
         default_text_size: $("#defaultTextSizeSelect").value,
         default_quality: $("#defaultQualitySelect").value,
@@ -1111,10 +1156,13 @@ async function saveSettings() {
         clear_password: $("#clearPassword").checked,
       },
     });
+    state.endpoints = collectEndpointsFromForm().map(makeEndpointDraft);
+    state.activeEndpointId = $("#settingsActiveEndpointSelect").value || state.endpoints[0]?.id || "";
+    renderEndpointSelectors();
     $("#passwordInput").value = "";
     $("#clearPassword").checked = false;
+    applyWebIcon($("#webIconUrlInput").value.trim());
     setHint("#settingsHint", "设置已保存。");
-    await initAuth();
   } catch (error) {
     setHint("#settingsHint", error.message);
   }
@@ -1198,6 +1246,13 @@ document.addEventListener("click", async (event) => {
     if (action === "prompt-copy") await copyText(decodeURIComponent(target.dataset.prompt));
     if (action === "prompt-edit") openPromptEdit(card);
     if (action === "prompt-delete") await deletePrompt(card);
+    if (action === "cancel-task") await cancelTask(target.dataset.taskId);
+    if (action === "toggle-secret") {
+      const input = target.closest(".secret-row")?.querySelector("input");
+      if (input) input.type = input.type === "password" ? "text" : "password";
+      const icon = target.querySelector("i");
+      if (icon) icon.className = input?.type === "text" ? "fa-regular fa-eye-slash" : "fa-regular fa-eye";
+    }
     if (action === "clear-gallery-tags") {
       state.selectedGalleryTags = [];
       await loadGallery();
@@ -1233,6 +1288,9 @@ document.addEventListener("click", async (event) => {
 $("#loginForm").addEventListener("submit", login);
 $("#mobileMenuBtn").addEventListener("click", openMobileNav);
 $("#mobileNavBackdrop").addEventListener("click", closeMobileNav);
+$("#sidebarCollapseBtn").addEventListener("click", () => {
+  setSidebarCollapsed(!document.body.classList.contains("sidebar-collapsed"));
+});
 $("#generateBtn").addEventListener("click", generate);
 $("#addEndpointBtn").addEventListener("click", () => {
   state.endpoints = collectEndpointsFromForm();
@@ -1281,6 +1339,9 @@ $("#confirmOkBtn").addEventListener("click", () => resolveConfirm(true));
 $("#confirmCancelBtn").addEventListener("click", () => resolveConfirm(false));
 $("#lightboxEditBtn").addEventListener("click", () => {
   fillImageEditFromLightbox().catch((error) => toast(error.message));
+});
+$("#lightboxImage").addEventListener("click", () => {
+  if (state.lightboxUrl) window.open(state.lightboxUrl, "_blank", "noopener");
 });
 $("#imageEditForm").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1332,7 +1393,8 @@ window.addEventListener("resize", () => {
   }, 150);
 });
 
+setSidebarCollapsed(localStorage.getItem("sidebarCollapsed") === "1");
+
 initAuth().catch((error) => {
-  $("#statusText").textContent = "后端不可用";
   toast(error.message);
 });

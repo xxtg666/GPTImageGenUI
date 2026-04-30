@@ -50,6 +50,10 @@ code {
   min-height: 100vh;
 }
 
+body.sidebar-collapsed .shell {
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+
 .mobile-menu-btn,
 .mobile-nav-backdrop {
   display: none;
@@ -63,6 +67,7 @@ code {
   border-right: 1px solid rgba(94, 70, 42, 0.18);
   background: rgba(255, 250, 240, 0.72);
   backdrop-filter: blur(22px);
+  transition: width 180ms ease, padding 180ms ease;
 }
 
 .brand,
@@ -85,15 +90,28 @@ code {
 .brand-mark {
   display: inline-grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
   border: 2px solid var(--ink);
-  border-radius: 15px;
+  border-radius: 18px;
   color: var(--paper);
   background: linear-gradient(135deg, var(--ink), var(--accent-dark));
   box-shadow: 6px 6px 0 rgba(200, 82, 27, 0.18);
   font-size: 1.4rem;
   font-weight: 900;
+  overflow: hidden;
+}
+
+.brand-mark.has-image {
+  border-color: var(--line);
+  background: var(--paper);
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand strong {
@@ -114,6 +132,9 @@ code {
 }
 
 .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   width: 100%;
   border: 1px solid transparent;
   border-radius: 18px;
@@ -123,6 +144,11 @@ code {
   text-align: left;
 }
 
+.nav-item i {
+  width: 20px;
+  text-align: center;
+}
+
 .nav-item.active,
 .nav-item:hover {
   border-color: var(--line);
@@ -130,7 +156,7 @@ code {
   box-shadow: 8px 8px 0 rgba(47, 125, 84, 0.08);
 }
 
-.status-card {
+.collapse-btn {
   position: absolute;
   right: 28px;
   bottom: 28px;
@@ -138,18 +164,44 @@ code {
   display: flex;
   gap: 10px;
   align-items: center;
+  justify-content: center;
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 14px;
   background: rgba(255, 250, 240, 0.78);
-  color: var(--muted);
+  color: var(--ink);
+  font-weight: 900;
 }
 
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--green);
+body.sidebar-collapsed .sidebar {
+  padding: 22px 16px;
+}
+
+body.sidebar-collapsed .brand {
+  justify-content: center;
+}
+
+body.sidebar-collapsed .brand-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+}
+
+body.sidebar-collapsed .brand-copy,
+body.sidebar-collapsed .nav-item span,
+body.sidebar-collapsed .collapse-btn span {
+  display: none;
+}
+
+body.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding: 14px 0;
+}
+
+body.sidebar-collapsed .collapse-btn {
+  right: 16px;
+  left: 16px;
+  padding: 14px 0;
 }
 
 .main {
@@ -497,6 +549,15 @@ select:focus {
     0 0,
     12px 12px;
   background-size: 24px 24px;
+}
+
+.result-image-btn {
+  display: grid;
+  place-items: center;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .result-stage img {
@@ -912,6 +973,13 @@ select:focus {
   padding: 12px 6px 4px;
 }
 
+.secret-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
 .endpoint-actions {
   display: flex;
   justify-content: flex-end;
@@ -991,6 +1059,7 @@ select:focus {
   max-height: 78vh;
   object-fit: contain;
   justify-self: center;
+  cursor: zoom-in;
 }
 
 .lightbox-card h2 {
@@ -1086,6 +1155,11 @@ select:focus {
 .task-card.failed {
   border-color: rgba(143, 55, 20, 0.54);
   background: rgba(255, 237, 226, 0.78);
+}
+
+.task-card.cancelled {
+  border-color: rgba(111, 103, 91, 0.46);
+  background: rgba(242, 238, 229, 0.78);
 }
 
 .task-card.succeeded {
@@ -1276,6 +1350,31 @@ select:focus {
     transform: translateX(0);
   }
 
+  body.sidebar-collapsed .sidebar {
+    padding: 22px;
+  }
+
+  body.sidebar-collapsed .brand {
+    justify-content: flex-start;
+  }
+
+  body.sidebar-collapsed .brand-copy,
+  body.sidebar-collapsed .nav-item span,
+  body.sidebar-collapsed .collapse-btn span {
+    display: inline;
+  }
+
+  body.sidebar-collapsed .nav-item {
+    justify-content: flex-start;
+    padding: 14px 16px;
+  }
+
+  body.sidebar-collapsed .collapse-btn {
+    right: 22px;
+    left: 22px;
+    padding: 14px;
+  }
+
   .nav {
     grid-template-columns: 1fr;
   }
@@ -1284,7 +1383,7 @@ select:focus {
     text-align: left;
   }
 
-  .status-card {
+  .collapse-btn {
     display: none;
   }
 
