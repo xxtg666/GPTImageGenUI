@@ -13,6 +13,58 @@
   --app-bg-opacity: 0.22;
 }
 
+html[data-theme="forest"] {
+  --bg: #edf3e8;
+  --paper: #fbfff4;
+  --paper-strong: #ecf8df;
+  --ink: #142016;
+  --muted: #63705f;
+  --line: #cadbbf;
+  --accent: #2f7d54;
+  --accent-dark: #19583a;
+  --green: #6b8f2f;
+  --shadow: 0 22px 70px rgba(35, 74, 38, 0.15);
+}
+
+html[data-theme="ocean"] {
+  --bg: #e8f0f3;
+  --paper: #f6fcff;
+  --paper-strong: #e3f4fb;
+  --ink: #12222a;
+  --muted: #5e6f76;
+  --line: #bfd6df;
+  --accent: #247ca3;
+  --accent-dark: #145778;
+  --green: #2f8f83;
+  --shadow: 0 22px 70px rgba(23, 77, 104, 0.15);
+}
+
+html[data-theme="slate"] {
+  --bg: #eceff1;
+  --paper: #fbfbf8;
+  --paper-strong: #ecebe5;
+  --ink: #1d2226;
+  --muted: #687077;
+  --line: #d0d4d7;
+  --accent: #596a78;
+  --accent-dark: #354653;
+  --green: #617d5d;
+  --shadow: 0 22px 70px rgba(37, 45, 52, 0.14);
+}
+
+html[data-theme="rose"] {
+  --bg: #f5eceb;
+  --paper: #fff8f5;
+  --paper-strong: #ffece7;
+  --ink: #261719;
+  --muted: #776365;
+  --line: #e0c8c7;
+  --accent: #c04f62;
+  --accent-dark: #8c3041;
+  --green: #5d8767;
+  --shadow: 0 22px 70px rgba(97, 38, 49, 0.15);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -27,6 +79,34 @@ body {
     radial-gradient(circle at 10% 10%, rgba(200, 82, 27, 0.18), transparent 28rem),
     radial-gradient(circle at 90% 20%, rgba(47, 125, 84, 0.16), transparent 24rem),
     linear-gradient(135deg, #efe3cd 0%, #f8f2e7 46%, #e7d7bd 100%);
+}
+
+html[data-theme="forest"] body {
+  background:
+    radial-gradient(circle at 10% 10%, rgba(47, 125, 84, 0.18), transparent 28rem),
+    radial-gradient(circle at 90% 20%, rgba(107, 143, 47, 0.16), transparent 24rem),
+    linear-gradient(135deg, #e0ebd6 0%, #f4faec 48%, #d5e4c9 100%);
+}
+
+html[data-theme="ocean"] body {
+  background:
+    radial-gradient(circle at 10% 10%, rgba(36, 124, 163, 0.18), transparent 28rem),
+    radial-gradient(circle at 90% 20%, rgba(47, 143, 131, 0.16), transparent 24rem),
+    linear-gradient(135deg, #dcecf2 0%, #f3fbff 48%, #cfe2ea 100%);
+}
+
+html[data-theme="slate"] body {
+  background:
+    radial-gradient(circle at 10% 10%, rgba(89, 106, 120, 0.16), transparent 28rem),
+    radial-gradient(circle at 90% 20%, rgba(97, 125, 93, 0.12), transparent 24rem),
+    linear-gradient(135deg, #e2e6e8 0%, #f7f7f4 48%, #d7dcdf 100%);
+}
+
+html[data-theme="rose"] body {
+  background:
+    radial-gradient(circle at 10% 10%, rgba(192, 79, 98, 0.18), transparent 28rem),
+    radial-gradient(circle at 90% 20%, rgba(93, 135, 103, 0.14), transparent 24rem),
+    linear-gradient(135deg, #f0dedd 0%, #fff6f2 48%, #e7d0d0 100%);
 }
 
 body::before {
@@ -124,6 +204,7 @@ body.sidebar-collapsed .shell {
 .brand-mark.has-image {
   border-color: var(--line);
   background: var(--paper);
+  box-shadow: none;
 }
 
 .brand-mark img {
@@ -1369,11 +1450,91 @@ select:focus {
     --shadow: 0 24px 74px rgba(0, 0, 0, 0.34);
   }
 
+  html[data-theme="forest"] {
+    --bg: #101710;
+    --paper: #182219;
+    --paper-strong: #223025;
+    --ink: #eff7e9;
+    --muted: #aebda8;
+    --line: #364b37;
+    --accent: #79b77c;
+    --accent-dark: #b8e3ae;
+    --green: #a6c76c;
+    --shadow: 0 24px 74px rgba(0, 0, 0, 0.34);
+  }
+
+  html[data-theme="ocean"] {
+    --bg: #0f171b;
+    --paper: #17232a;
+    --paper-strong: #20323b;
+    --ink: #edf7fb;
+    --muted: #a8b9c0;
+    --line: #334c58;
+    --accent: #6ab7d6;
+    --accent-dark: #ade3f6;
+    --green: #72c7ba;
+    --shadow: 0 24px 74px rgba(0, 0, 0, 0.34);
+  }
+
+  html[data-theme="slate"] {
+    --bg: #111417;
+    --paper: #1b2024;
+    --paper-strong: #252b30;
+    --ink: #f0f3f5;
+    --muted: #aeb5bb;
+    --line: #3d464e;
+    --accent: #9aa8b3;
+    --accent-dark: #d6e0e7;
+    --green: #9cb38f;
+    --shadow: 0 24px 74px rgba(0, 0, 0, 0.34);
+  }
+
+  html[data-theme="rose"] {
+    --bg: #1a1113;
+    --paper: #25191c;
+    --paper-strong: #332127;
+    --ink: #fff0ef;
+    --muted: #c3a9aa;
+    --line: #543740;
+    --accent: #e2798a;
+    --accent-dark: #ffc0c9;
+    --green: #8fc29b;
+    --shadow: 0 24px 74px rgba(0, 0, 0, 0.34);
+  }
+
   body {
     background:
       radial-gradient(circle at 12% 8%, rgba(224, 106, 45, 0.18), transparent 28rem),
       radial-gradient(circle at 88% 18%, rgba(118, 186, 133, 0.12), transparent 24rem),
       linear-gradient(135deg, #15130f 0%, #201a13 52%, #10130f 100%);
+  }
+
+  html[data-theme="forest"] body {
+    background:
+      radial-gradient(circle at 12% 8%, rgba(121, 183, 124, 0.18), transparent 28rem),
+      radial-gradient(circle at 88% 18%, rgba(166, 199, 108, 0.12), transparent 24rem),
+      linear-gradient(135deg, #101710 0%, #182218 52%, #0d130e 100%);
+  }
+
+  html[data-theme="ocean"] body {
+    background:
+      radial-gradient(circle at 12% 8%, rgba(106, 183, 214, 0.18), transparent 28rem),
+      radial-gradient(circle at 88% 18%, rgba(114, 199, 186, 0.12), transparent 24rem),
+      linear-gradient(135deg, #0f171b 0%, #17252c 52%, #0c1115 100%);
+  }
+
+  html[data-theme="slate"] body {
+    background:
+      radial-gradient(circle at 12% 8%, rgba(154, 168, 179, 0.14), transparent 28rem),
+      radial-gradient(circle at 88% 18%, rgba(156, 179, 143, 0.1), transparent 24rem),
+      linear-gradient(135deg, #111417 0%, #1d2226 52%, #0d0f11 100%);
+  }
+
+  html[data-theme="rose"] body {
+    background:
+      radial-gradient(circle at 12% 8%, rgba(226, 121, 138, 0.18), transparent 28rem),
+      radial-gradient(circle at 88% 18%, rgba(143, 194, 155, 0.1), transparent 24rem),
+      linear-gradient(135deg, #1a1113 0%, #29191d 52%, #120d0f 100%);
   }
 
   .sidebar,
@@ -1383,6 +1544,42 @@ select:focus {
   .prompt-card,
   .task-card {
     background-color: rgba(33, 29, 23, 0.78);
+  }
+
+  html[data-theme="forest"] .sidebar,
+  html[data-theme="forest"] .panel,
+  html[data-theme="forest"] .hero,
+  html[data-theme="forest"] .image-card,
+  html[data-theme="forest"] .prompt-card,
+  html[data-theme="forest"] .task-card {
+    background-color: rgba(24, 34, 25, 0.82);
+  }
+
+  html[data-theme="ocean"] .sidebar,
+  html[data-theme="ocean"] .panel,
+  html[data-theme="ocean"] .hero,
+  html[data-theme="ocean"] .image-card,
+  html[data-theme="ocean"] .prompt-card,
+  html[data-theme="ocean"] .task-card {
+    background-color: rgba(23, 35, 42, 0.82);
+  }
+
+  html[data-theme="slate"] .sidebar,
+  html[data-theme="slate"] .panel,
+  html[data-theme="slate"] .hero,
+  html[data-theme="slate"] .image-card,
+  html[data-theme="slate"] .prompt-card,
+  html[data-theme="slate"] .task-card {
+    background-color: rgba(27, 32, 36, 0.84);
+  }
+
+  html[data-theme="rose"] .sidebar,
+  html[data-theme="rose"] .panel,
+  html[data-theme="rose"] .hero,
+  html[data-theme="rose"] .image-card,
+  html[data-theme="rose"] .prompt-card,
+  html[data-theme="rose"] .task-card {
+    background-color: rgba(37, 25, 28, 0.82);
   }
 
   input,
@@ -1395,7 +1592,42 @@ select:focus {
   .reference-preview,
   .advanced,
   .endpoint-card {
-    background-color: rgba(255, 255, 255, 0.07);
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  button,
+  .ghost,
+  .mode-btn,
+  .nav-item,
+  .card-actions button,
+  .card-actions a,
+  .tag-filter-menu,
+  .settings-popover,
+  .login-card,
+  .modal-card,
+  .mask-painter-card,
+  .lightbox-card,
+  .lightbox-close,
+  .lightbox-download,
+  .lightbox-edit,
+  .mobile-menu-btn {
+    background-color: rgba(33, 29, 23, 0.92);
+  }
+
+  option {
+    color: var(--ink);
+    background: var(--paper);
+  }
+
+  .image-preview,
+  .image-preview img,
+  .preview,
+  .edit-preview-box img,
+  .prompt-reference-btn,
+  .prompt-reference-thumb,
+  .result-stage,
+  .mask-canvas-wrap {
+    background-color: var(--paper-strong);
   }
 
   .mode-btn.active {
@@ -1405,6 +1637,7 @@ select:focus {
 
   .primary {
     color: #15130f;
+    background: var(--accent);
   }
 
   .tag {

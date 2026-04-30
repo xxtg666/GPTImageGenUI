@@ -45,6 +45,7 @@ DEFAULT_CONFIG = {
     "web_icon_url": "",
     "web_background_url": "",
     "web_background_opacity": 0.22,
+    "color_theme": "terracotta",
     "server_port": 7860,
 }
 
@@ -767,6 +768,11 @@ def normalize_opacity(value: Any) -> float:
     return round(max(0, min(1, opacity)), 2)
 
 
+def normalize_color_theme(value: Any) -> str:
+    theme = str(first_value(value) or "terracotta").strip().lower()
+    return theme if theme in {"terracotta", "forest", "ocean", "slate", "rose"} else "terracotta"
+
+
 def normalize_port(value: Any) -> int:
     try:
         return max(1, min(65535, int(str(value).strip() or "7860")))
@@ -1037,9 +1043,6 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             {
                 "password_set": bool(config.get("password_hash")),
                 "authenticated": self.is_authenticated(),
-                "web_icon_url": str(config.get("web_icon_url", "") or ""),
-                "web_background_url": str(config.get("web_background_url", "") or ""),
-                "web_background_opacity": normalize_opacity(config.get("web_background_opacity", 0.22)),
             },
         )
 
@@ -1091,6 +1094,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                 "web_icon_url": str(config.get("web_icon_url", "") or ""),
                 "web_background_url": str(config.get("web_background_url", "") or ""),
                 "web_background_opacity": normalize_opacity(config.get("web_background_opacity", 0.22)),
+                "color_theme": normalize_color_theme(config.get("color_theme", "terracotta")),
                 "server_port": normalize_port(config.get("server_port", 7860)),
                 "has_api_key": bool(config.get("api_key")),
                 "password_set": bool(config.get("password_hash")),
@@ -1130,6 +1134,8 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             config["web_background_url"] = str(body.get("web_background_url", "") or "").strip()
         if "web_background_opacity" in body:
             config["web_background_opacity"] = normalize_opacity(body.get("web_background_opacity"))
+        if "color_theme" in body:
+            config["color_theme"] = normalize_color_theme(body.get("color_theme"))
         if "server_port" in body:
             config["server_port"] = normalize_port(body.get("server_port"))
         if body.get("password"):

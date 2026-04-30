@@ -34,6 +34,7 @@ const state = {
   webIconUrl: "",
   webBackgroundUrl: "",
   webBackgroundOpacity: 0.22,
+  colorTheme: "terracotta",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -456,8 +457,6 @@ async function savePaintedMask() {
 
 async function initAuth() {
   const me = await api("/api/me");
-  applyWebIcon(me.web_icon_url || state.webIconUrl || "");
-  applyAppearance(me.web_background_url || state.webBackgroundUrl || "", me.web_background_opacity ?? state.webBackgroundOpacity);
   if (me.password_set && !me.authenticated) {
     $("#loginOverlay").classList.remove("hidden");
   } else {
@@ -1122,6 +1121,13 @@ function applyAppearance(backgroundUrl, opacity) {
   }
 }
 
+function applyColorTheme(theme) {
+  const allowedThemes = ["terracotta", "forest", "ocean", "slate", "rose"];
+  state.colorTheme = allowedThemes.includes(theme) ? theme : "terracotta";
+  document.documentElement.dataset.theme = state.colorTheme;
+  if ($("#colorThemeSelect")) $("#colorThemeSelect").value = state.colorTheme;
+}
+
 async function loadSettings() {
   const settings = await api("/api/settings");
   state.settingsLoaded = true;
@@ -1131,6 +1137,7 @@ async function loadSettings() {
   $("#expectedTaskSecondsInput").value = settings.expected_task_seconds || 90;
   $("#serverPortInput").value = settings.server_port || 7860;
   $("#webIconUrlInput").value = settings.web_icon_url || "";
+  $("#colorThemeSelect").value = settings.color_theme || "terracotta";
   $("#webBackgroundUrlInput").value = settings.web_background_url || "";
   $("#webBackgroundOpacityInput").value = Math.round(normalizeOpacity(settings.web_background_opacity) * 100);
   $("#webBackgroundOpacityText").textContent = `${$("#webBackgroundOpacityInput").value}%`;
@@ -1157,6 +1164,7 @@ async function loadSettings() {
   $("#passwordInput").placeholder = settings.password_set ? "已设置，留空则保持不变" : "设置 WebUI 密码";
   applyWebIcon(settings.web_icon_url || "");
   applyAppearance(settings.web_background_url || "", settings.web_background_opacity ?? 0.22);
+  applyColorTheme(settings.color_theme || "terracotta");
 }
 
 async function saveSettings() {
@@ -1170,6 +1178,7 @@ async function saveSettings() {
         expected_task_seconds: $("#expectedTaskSecondsInput").value,
         server_port: $("#serverPortInput").value,
         web_icon_url: $("#webIconUrlInput").value,
+        color_theme: $("#colorThemeSelect").value,
         web_background_url: $("#webBackgroundUrlInput").value,
         web_background_opacity: Number($("#webBackgroundOpacityInput").value) / 100,
         default_retries: $("#defaultRetriesInput").value,
@@ -1190,6 +1199,7 @@ async function saveSettings() {
     $("#passwordInput").value = "";
     $("#clearPassword").checked = false;
     applyWebIcon($("#webIconUrlInput").value.trim());
+    applyColorTheme($("#colorThemeSelect").value);
     applyAppearance($("#webBackgroundUrlInput").value.trim(), Number($("#webBackgroundOpacityInput").value) / 100);
     setHint("#settingsHint", "设置已保存。");
   } catch (error) {
@@ -1425,6 +1435,9 @@ $("#webBackgroundUrlInput").addEventListener("input", () => {
 });
 $("#webBackgroundOpacityInput").addEventListener("input", () => {
   applyAppearance($("#webBackgroundUrlInput").value.trim(), Number($("#webBackgroundOpacityInput").value) / 100);
+});
+$("#colorThemeSelect").addEventListener("change", (event) => {
+  applyColorTheme(event.target.value);
 });
 $("#clearBackgroundBtn").addEventListener("click", () => {
   $("#webBackgroundUrlInput").value = "";
