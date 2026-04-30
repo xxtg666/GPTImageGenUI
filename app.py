@@ -43,6 +43,8 @@ DEFAULT_CONFIG = {
     "default_output_format": "",
     "default_output_compression": "",
     "web_icon_url": "",
+    "web_background_url": "",
+    "web_background_opacity": 0.22,
     "server_port": 7860,
 }
 
@@ -166,10 +168,6 @@ def merge_endpoints(existing: list[dict[str, Any]], incoming: list[Any]) -> list
         endpoint_id = normalize_endpoint_id(raw.get("id"), f"endpoint-{index}")
         previous = existing_map.get(endpoint_id, {})
         api_key = str(raw.get("api_key", "") or "").strip()
-        if raw.get("clear_api_key"):
-            api_key = ""
-        elif not api_key:
-            api_key = previous.get("api_key", "")
         merged.append(
             {
                 "id": endpoint_id,
@@ -758,6 +756,17 @@ def normalize_output_compression(value: Any) -> str:
         return ""
 
 
+def normalize_opacity(value: Any) -> float:
+    raw = str(first_value(value) or "0.22").strip()
+    try:
+        opacity = float(raw)
+    except ValueError:
+        return 0.22
+    if opacity > 1:
+        opacity = opacity / 100
+    return round(max(0, min(1, opacity)), 2)
+
+
 def normalize_port(value: Any) -> int:
     try:
         return max(1, min(65535, int(str(value).strip() or "7860")))
@@ -1029,6 +1038,8 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                 "password_set": bool(config.get("password_hash")),
                 "authenticated": self.is_authenticated(),
                 "web_icon_url": str(config.get("web_icon_url", "") or ""),
+                "web_background_url": str(config.get("web_background_url", "") or ""),
+                "web_background_opacity": normalize_opacity(config.get("web_background_opacity", 0.22)),
             },
         )
 
@@ -1078,6 +1089,8 @@ class ImageGenHandler(BaseHTTPRequestHandler):
                 "default_output_format": normalize_choice(config.get("default_output_format", ""), {"png", "jpeg", "webp"}),
                 "default_output_compression": normalize_output_compression(config.get("default_output_compression", "")),
                 "web_icon_url": str(config.get("web_icon_url", "") or ""),
+                "web_background_url": str(config.get("web_background_url", "") or ""),
+                "web_background_opacity": normalize_opacity(config.get("web_background_opacity", 0.22)),
                 "server_port": normalize_port(config.get("server_port", 7860)),
                 "has_api_key": bool(config.get("api_key")),
                 "password_set": bool(config.get("password_hash")),
@@ -1113,6 +1126,10 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             config["default_output_compression"] = normalize_output_compression(body.get("default_output_compression"))
         if "web_icon_url" in body:
             config["web_icon_url"] = str(body.get("web_icon_url", "") or "").strip()
+        if "web_background_url" in body:
+            config["web_background_url"] = str(body.get("web_background_url", "") or "").strip()
+        if "web_background_opacity" in body:
+            config["web_background_opacity"] = normalize_opacity(body.get("web_background_opacity"))
         if "server_port" in body:
             config["server_port"] = normalize_port(body.get("server_port"))
         if body.get("password"):

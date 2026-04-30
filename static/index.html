@@ -305,6 +305,25 @@
                 <input id="webIconUrlInput" type="url" placeholder="https://example.com/icon.png" />
               </label>
               <label class="field">
+                <span>背景图片 URL</span>
+                <div class="inline-control">
+                  <input id="webBackgroundUrlInput" type="url" placeholder="https://example.com/background.jpg" />
+                  <button id="backgroundOptionsBtn" class="icon-btn" type="button" title="背景显示选项">
+                    <i class="fa-solid fa-sliders"></i>
+                  </button>
+                  <div id="backgroundOptionsPopover" class="settings-popover hidden">
+                    <label class="field mini-field">
+                      <span>图片透明度</span>
+                      <input id="webBackgroundOpacityInput" type="range" min="0" max="100" value="22" />
+                    </label>
+                    <div class="opacity-readout">
+                      <span id="webBackgroundOpacityText">22%</span>
+                      <button id="clearBackgroundBtn" class="ghost compact-danger" type="button">清除背景图</button>
+                    </div>
+                  </div>
+                </div>
+              </label>
+              <label class="field">
                 <span>失败自动重试次数</span>
                 <input id="defaultRetriesInput" type="number" min="0" max="9" value="0" />
               </label>

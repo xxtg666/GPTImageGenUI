@@ -32,6 +32,8 @@ const state = {
   activeEndpointId: "",
   settingsLoaded: false,
   webIconUrl: "",
+  webBackgroundUrl: "",
+  webBackgroundOpacity: 0.22,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -75,11 +77,13 @@ function switchPage(page) {
 
 function openMobileNav() {
   $(".sidebar").classList.add("open");
+  document.body.classList.add("mobile-nav-open");
   $("#mobileNavBackdrop").classList.remove("hidden");
 }
 
 function closeMobileNav() {
   $(".sidebar").classList.remove("open");
+  document.body.classList.remove("mobile-nav-open");
   $("#mobileNavBackdrop").classList.add("hidden");
 }
 
@@ -127,7 +131,6 @@ function makeEndpointDraft(endpoint = {}) {
     model: endpoint.model || "gpt-image-1",
     api_key: endpoint.api_key || "",
     has_api_key: Boolean(endpoint.has_api_key || endpoint.api_key),
-    clear_api_key: false,
     collapsed: endpoint.collapsed ?? true,
   };
 }
@@ -167,10 +170,6 @@ function renderEndpointList() {
                 </button>
               </div>
             </label>
-            <label class="check-row">
-              <input class="endpoint-clear-api-key" type="checkbox" ${endpoint.clear_api_key ? "checked" : ""} />
-              <span>清除该后端已保存的 API Key</span>
-            </label>
             <div class="endpoint-actions">
               <button class="ghost danger compact-danger" type="button" data-action="remove-endpoint">删除后端</button>
             </div>
@@ -203,7 +202,6 @@ function collectEndpointsFromForm() {
       base_url: card.querySelector(".endpoint-base-url").value.trim(),
       model: card.querySelector(".endpoint-model").value.trim(),
       api_key: card.querySelector(".endpoint-api-key").value.trim(),
-      clear_api_key: card.querySelector(".endpoint-clear-api-key").checked,
       collapsed: existing.collapsed,
     };
   });
@@ -459,6 +457,7 @@ async function savePaintedMask() {
 async function initAuth() {
   const me = await api("/api/me");
   applyWebIcon(me.web_icon_url || state.webIconUrl || "");
+  applyAppearance(me.web_background_url || state.webBackgroundUrl || "", me.web_background_opacity ?? state.webBackgroundOpacity);
   if (me.password_set && !me.authenticated) {
     $("#loginOverlay").classList.remove("hidden");
   } else {
@@ -1100,6 +1099,29 @@ function applyWebIcon(url) {
   });
 }
 
+function normalizeOpacity(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0.22;
+  return Math.max(0, Math.min(1, parsed > 1 ? parsed / 100 : parsed));
+}
+
+function applyAppearance(backgroundUrl, opacity) {
+  state.webBackgroundUrl = backgroundUrl || "";
+  state.webBackgroundOpacity = normalizeOpacity(opacity);
+  document.documentElement.style.setProperty(
+    "--app-bg-image",
+    state.webBackgroundUrl ? `url("${state.webBackgroundUrl.replaceAll('"', "%22")}")` : "none",
+  );
+  document.documentElement.style.setProperty("--app-bg-opacity", String(state.webBackgroundOpacity));
+  if ($("#webBackgroundUrlInput")) $("#webBackgroundUrlInput").value = state.webBackgroundUrl;
+  if ($("#webBackgroundOpacityInput")) {
+    $("#webBackgroundOpacityInput").value = String(Math.round(state.webBackgroundOpacity * 100));
+  }
+  if ($("#webBackgroundOpacityText")) {
+    $("#webBackgroundOpacityText").textContent = `${Math.round(state.webBackgroundOpacity * 100)}%`;
+  }
+}
+
 async function loadSettings() {
   const settings = await api("/api/settings");
   state.settingsLoaded = true;
@@ -1109,6 +1131,9 @@ async function loadSettings() {
   $("#expectedTaskSecondsInput").value = settings.expected_task_seconds || 90;
   $("#serverPortInput").value = settings.server_port || 7860;
   $("#webIconUrlInput").value = settings.web_icon_url || "";
+  $("#webBackgroundUrlInput").value = settings.web_background_url || "";
+  $("#webBackgroundOpacityInput").value = Math.round(normalizeOpacity(settings.web_background_opacity) * 100);
+  $("#webBackgroundOpacityText").textContent = `${$("#webBackgroundOpacityInput").value}%`;
   $("#defaultRetriesInput").value = settings.default_retries || 0;
   $("#defaultTextSizeSelect").value = settings.default_text_size || "1024x1024";
   $("#defaultQualitySelect").value = settings.default_quality || "";
@@ -1131,6 +1156,7 @@ async function loadSettings() {
   }
   $("#passwordInput").placeholder = settings.password_set ? "已设置，留空则保持不变" : "设置 WebUI 密码";
   applyWebIcon(settings.web_icon_url || "");
+  applyAppearance(settings.web_background_url || "", settings.web_background_opacity ?? 0.22);
 }
 
 async function saveSettings() {
@@ -1144,6 +1170,8 @@ async function saveSettings() {
         expected_task_seconds: $("#expectedTaskSecondsInput").value,
         server_port: $("#serverPortInput").value,
         web_icon_url: $("#webIconUrlInput").value,
+        web_background_url: $("#webBackgroundUrlInput").value,
+        web_background_opacity: Number($("#webBackgroundOpacityInput").value) / 100,
         default_retries: $("#defaultRetriesInput").value,
         default_text_size: $("#defaultTextSizeSelect").value,
         default_quality: $("#defaultQualitySelect").value,
@@ -1162,6 +1190,7 @@ async function saveSettings() {
     $("#passwordInput").value = "";
     $("#clearPassword").checked = false;
     applyWebIcon($("#webIconUrlInput").value.trim());
+    applyAppearance($("#webBackgroundUrlInput").value.trim(), Number($("#webBackgroundOpacityInput").value) / 100);
     setHint("#settingsHint", "设置已保存。");
   } catch (error) {
     setHint("#settingsHint", error.message);
@@ -1189,6 +1218,9 @@ document.addEventListener("click", async (event) => {
   }
   if (!clickedElement?.closest("#promptTagFilter")) {
     $("#promptTagMenu")?.classList.add("hidden");
+  }
+  if (!clickedElement?.closest(".inline-control")) {
+    $("#backgroundOptionsPopover")?.classList.add("hidden");
   }
   if (event.target.id === "lightbox") {
     $("#lightbox").classList.add("hidden");
@@ -1385,6 +1417,19 @@ $("#clearPromptReference").addEventListener("change", () => {
   }
 });
 $("#saveSettingsBtn").addEventListener("click", saveSettings);
+$("#backgroundOptionsBtn").addEventListener("click", () => {
+  $("#backgroundOptionsPopover").classList.toggle("hidden");
+});
+$("#webBackgroundUrlInput").addEventListener("input", () => {
+  applyAppearance($("#webBackgroundUrlInput").value.trim(), Number($("#webBackgroundOpacityInput").value) / 100);
+});
+$("#webBackgroundOpacityInput").addEventListener("input", () => {
+  applyAppearance($("#webBackgroundUrlInput").value.trim(), Number($("#webBackgroundOpacityInput").value) / 100);
+});
+$("#clearBackgroundBtn").addEventListener("click", () => {
+  $("#webBackgroundUrlInput").value = "";
+  applyAppearance("", Number($("#webBackgroundOpacityInput").value) / 100);
+});
 $("#editImage").addEventListener("change", updateEditPreview);
 window.addEventListener("resize", () => {
   window.clearTimeout(renderGallery.timer);
