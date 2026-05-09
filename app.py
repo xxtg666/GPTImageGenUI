@@ -856,7 +856,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
         *,
         content_type: str,
         download_name: str | None = None,
-        cache_control: str = "private, max-age=31536000, immutable",
+        cache_control: str = "public, max-age=31536000, immutable",
     ) -> None:
         stat = file_path.stat()
         etag = f'W/"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
@@ -1033,7 +1033,7 @@ class ImageGenHandler(BaseHTTPRequestHandler):
             file_path,
             content_type=mimetypes.guess_type(file_path.name)[0] or "image/png",
             download_name=download_name,
-            cache_control="private, max-age=0, must-revalidate",
+            cache_control="public, max-age=0, must-revalidate",
         )
 
     def handle_me(self) -> None:
